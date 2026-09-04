@@ -1,4 +1,5 @@
-import https from "node:https";
+import * as cheerio from "cheerio";
+import ipaddr from "ipaddr.js";
 
 export function isApprovedUrl(value: string): boolean {
   try {
@@ -10,22 +11,40 @@ export function isApprovedUrl(value: string): boolean {
 
     const host = url.hostname.toLowerCase();
 
-    // SSRF Guard: Block localhost & private IP ranges
+    // Check domain extensions / hostnames known to be internal/private
     if (
       host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "::1" ||
-      host.startsWith("192.168.") ||
-      host.startsWith("10.") ||
-      host.startsWith("172.16.") ||
-      host.startsWith("172.17.") ||
-      host.startsWith("172.18.") ||
-      host.startsWith("172.19.") ||
-      host.startsWith("172.20.") ||
-      host.startsWith("172.31.") ||
       host.endsWith(".local") ||
-      host.endsWith(".internal")
+      host.endsWith(".internal") ||
+      host.endsWith(".lan") ||
+      host === "metadata.google.internal"
     ) {
+      return false;
+    }
+
+    // Try parsing as IP address (v4 or v6) using ipaddr.js
+    if (ipaddr.isValid(host)) {
+      const addr = ipaddr.parse(host);
+      const rangeName = addr.range() as string;
+
+      // Block non-unicast or private IP ranges
+      if (
+        rangeName === "loopback" ||
+        rangeName === "private" ||
+        rangeName === "linkLocal" ||
+        rangeName === "broadcast" ||
+        rangeName === "carrierGradeNat" ||
+        rangeName === "carrierNat" ||
+        rangeName === "unspecified" ||
+        rangeName === "reserved" ||
+        rangeName === "multicast"
+      ) {
+        return false;
+      }
+    }
+
+    // Block cloud metadata IP explicitly
+    if (host === "169.254.169.254") {
       return false;
     }
 
@@ -35,96 +54,171 @@ export function isApprovedUrl(value: string): boolean {
   }
 }
 
-function searchDDGApi(query: string): Promise<string[]> {
-  return new Promise((resolve) => {
-    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`;
-    https.get(
-      url,
+async function searchTavilyApi(query: string, limit = 4): Promise<string[]> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        max_results: limit,
+        search_depth: "basic",
+      }),
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (Array.isArray(data.results)) {
+      return data.results
+        .map((r: { url?: string }) => r.url)
+        .filter((u: unknown): u is string => typeof u === "string");
+    }
+  } catch {
+    // ignore fetch error
+  }
+  return [];
+}
+
+async function searchSerperApi(query: string, limit = 4): Promise<string[]> {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    const res = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: {
+        "X-API-KEY": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ q: query, num: limit }),
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (Array.isArray(data.organic)) {
+      return data.organic
+        .map((r: { link?: string }) => r.link)
+        .filter((u: unknown): u is string => typeof u === "string");
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+async function searchDDGHtml(query: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
       {
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Accept: "application/json",
+          Accept: "text/html",
         },
-        timeout: 6000,
-      },
-      (res) => {
-        let data = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(data);
-            const urls: string[] = [];
-            if (parsed.AbstractURL) urls.push(parsed.AbstractURL);
-            if (parsed.Results) {
-              for (const r of parsed.Results) {
-                if (r.FirstURL) urls.push(r.FirstURL);
-              }
-            }
-            if (parsed.RelatedTopics) {
-              for (const t of parsed.RelatedTopics) {
-                if (t.FirstURL) urls.push(t.FirstURL);
-              }
-            }
-            resolve(urls);
-          } catch {
-            resolve([]);
-          }
-        });
+        signal: AbortSignal.timeout(6000),
       }
-    ).on("error", () => resolve([]));
-  });
+    );
+
+    if (!res.ok) return [];
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    const urls: string[] = [];
+
+    $(".result__url, .result__a, .result__snippet").each((_, el) => {
+      const href = $(el).attr("href");
+      if (href) {
+        let cleanUrl = href;
+        if (cleanUrl.includes("uddg=")) {
+          try {
+            const parsed = new URL("https://duckduckgo.com" + cleanUrl);
+            const uddg = parsed.searchParams.get("uddg");
+            if (uddg) cleanUrl = decodeURIComponent(uddg);
+          } catch {
+            // ignore
+          }
+        }
+        if (cleanUrl.startsWith("http") && !urls.includes(cleanUrl)) {
+          urls.push(cleanUrl);
+        }
+      }
+    });
+
+    return urls;
+  } catch {
+    return [];
+  }
 }
 
-function searchWikipediaSources(query: string, limit = 3): Promise<string[]> {
-  return new Promise((resolve) => {
-    if (!query) return resolve([]);
+async function searchDDGApi(query: string): Promise<string[]> {
+  try {
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!res.ok) return [];
+    const parsed = await res.json();
+    const urls: string[] = [];
+    if (parsed.AbstractURL) urls.push(parsed.AbstractURL);
+    if (parsed.Results && Array.isArray(parsed.Results)) {
+      for (const r of parsed.Results) {
+        if (r.FirstURL) urls.push(r.FirstURL);
+      }
+    }
+    if (parsed.RelatedTopics && Array.isArray(parsed.RelatedTopics)) {
+      for (const t of parsed.RelatedTopics) {
+        if (t.FirstURL) urls.push(t.FirstURL);
+      }
+    }
+    return urls;
+  } catch {
+    return [];
+  }
+}
+
+async function searchWikipediaSources(
+  query: string,
+  limit = 3
+): Promise<string[]> {
+  if (!query) return [];
+  try {
     const apiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
       query
     )}&format=json&srlimit=${limit}`;
 
-    const req = https.get(
-      apiUrl,
-      {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Accept: "application/json",
-        },
-        timeout: 6000,
+    const res = await fetch(apiUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "application/json",
       },
-      (res) => {
-        let data = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(data);
-            const searchResults = parsed.query?.search || [];
-            const urls = searchResults.map(
-              (item: { title: string }) =>
-                `https://en.wikipedia.org/wiki/${encodeURIComponent(
-                  item.title.replace(/ /g, "_")
-                )}`
-            );
-            resolve(urls);
-          } catch {
-            resolve([]);
-          }
-        });
-      }
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!res.ok) return [];
+    const parsed = await res.json();
+    const searchResults = parsed.query?.search || [];
+    return searchResults.map(
+      (item: { title: string }) =>
+        `https://en.wikipedia.org/wiki/${encodeURIComponent(
+          item.title.replace(/ /g, "_")
+        )}`
     );
-
-    req.on("timeout", () => {
-      req.destroy();
-      resolve([]);
-    });
-
-    req.on("error", () => {
-      resolve([]);
-    });
-  });
+  } catch {
+    return [];
+  }
 }
 
 function generateCandidateQueries(query: string): string[] {
@@ -137,15 +231,13 @@ function generateCandidateQueries(query: string): string[] {
   // 2. Main nouns without conversational fillers
   const stopwords = new Set([
     "research", "find", "come", "up", "with", "a", "number", "for", "their",
-    "and", "the", "of", "in", "to", "about", "give", "me", "tell", "what", "is"
+    "and", "the", "of", "in", "to", "about", "give", "me", "tell", "what", "is", "how", "does"
   ]);
   const words = clean
     .split(/\s+/)
     .filter((w) => w.length > 2 && !stopwords.has(w.toLowerCase()));
 
   if (words.length > 0) candidates.push(words.join(" "));
-  if (words.length >= 2) candidates.push(words.slice(0, 2).join(" "));
-  if (words.length >= 1) candidates.push(words[0]);
 
   return Array.from(new Set(candidates)).filter(Boolean);
 }
@@ -160,23 +252,41 @@ export async function searchWebSources(
   for (const q of candidateQueries) {
     if (urls.length >= limit) break;
 
-    try {
-      const ddgUrls = await searchDDGApi(q);
-      for (const u of ddgUrls) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
-      }
-    } catch {
-      // ignore
+    // 1. Tavily API (if configured)
+    const tavily = await searchTavilyApi(q, limit);
+    for (const u of tavily) {
+      if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
     }
 
+    // 2. Serper API (if configured)
     if (urls.length < limit) {
-      try {
-        const wikiUrls = await searchWikipediaSources(q, limit);
-        for (const u of wikiUrls) {
-          if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
-        }
-      } catch {
-        // ignore
+      const serper = await searchSerperApi(q, limit);
+      for (const u of serper) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      }
+    }
+
+    // 3. DuckDuckGo HTML scraper fallback
+    if (urls.length < limit) {
+      const ddgHtml = await searchDDGHtml(q);
+      for (const u of ddgHtml) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      }
+    }
+
+    // 4. DuckDuckGo API fallback
+    if (urls.length < limit) {
+      const ddgApi = await searchDDGApi(q);
+      for (const u of ddgApi) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      }
+    }
+
+    // 5. Wikipedia API fallback
+    if (urls.length < limit) {
+      const wiki = await searchWikipediaSources(q, limit);
+      for (const u of wiki) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
   }

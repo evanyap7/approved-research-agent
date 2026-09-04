@@ -1,23 +1,26 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
+import ReactMarkdown from "react-markdown";
 
 type Finding = {
   claim: string;
   sourceIds: string[];
-  confidence: "high" | "medium" | "low";
+  confidence?: "high" | "medium" | "low";
 };
 
 type EvidenceItem = {
   claim: string;
   sourceIds: string[];
-  confidence: "high" | "medium" | "low";
+  confidence?: "high" | "medium" | "low";
 };
 
 type TopicResult = {
   mode: "topic";
   answer: string;
   findings: Finding[];
+  limitations?: string[];
+  sourcesUsed?: string[];
 };
 
 type ClaimResult = {
@@ -28,6 +31,8 @@ type ClaimResult = {
   reasoning: string;
   supportingEvidence: EvidenceItem[];
   contradictingEvidence: EvidenceItem[];
+  limitations?: string[];
+  sourcesUsed?: string[];
 };
 
 type SourceMetadata = {
@@ -39,13 +44,13 @@ type SourceMetadata = {
 
 type ResearchResponse = {
   result: TopicResult | ClaimResult;
-  sourceMetadata: SourceMetadata[];
+  sources: SourceMetadata[];
 };
 
 const SAMPLE_PROMPTS = [
   {
     category: "🏢 Company Research",
-    question: "Research Modern Terminals Limited (MTL)'s sustainability reports",
+    question: "Research Modern Terminals Limited (MTL)'s sustainability reports and port operations",
   },
   {
     category: "🏋️ Health & Fitness",
@@ -85,6 +90,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ResearchResponse | null>(null);
   const [error, setError] = useState("");
+  const [selectedSource, setSelectedSource] = useState<SourceMetadata | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const savedKey = localStorage.getItem("gemini_api_key");
@@ -106,6 +113,7 @@ export default function Home() {
     setLoading(true);
     setData(null);
     setError("");
+    setSelectedSource(null);
 
     const customUrls = customUrlInput
       .split(/[\n,]/)
@@ -145,7 +153,36 @@ export default function Home() {
   }
 
   function sourceFor(id: string) {
-    return data?.sourceMetadata.find((source) => source.id === id);
+    return data?.sources.find((source) => source.id === id);
+  }
+
+  function copyMarkdownReport() {
+    if (!data) return;
+    let report = `# Research Report: ${question}\n\n`;
+    if (data.result.mode === "topic") {
+      report += `## Synthesized Answer\n\n${data.result.answer}\n\n`;
+      if (data.result.findings.length > 0) {
+        report += `## Key Findings\n\n`;
+        for (const f of data.result.findings) {
+          report += `- ${f.claim} (Sources: ${f.sourceIds.join(", ")})\n`;
+        }
+      }
+    } else {
+      report += `## Claim: ${data.result.claim}\n\n`;
+      report += `**Verdict**: ${data.result.verdict} (${data.result.truthRating}% truth rating)\n\n`;
+      report += `### Rationale\n${data.result.reasoning}\n\n`;
+    }
+
+    if (data.sources.length > 0) {
+      report += `\n## Retrived Sources\n`;
+      for (const s of data.sources) {
+        report += `- [${s.id}] ${s.title} - ${s.url}\n`;
+      }
+    }
+
+    navigator.clipboard.writeText(report);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   }
 
   return (
@@ -224,7 +261,7 @@ export default function Home() {
             onChange={(event) => setQuestion(event.target.value)}
             placeholder={
               mode === "topic"
-                ? "e.g. Research Modern Terminal Limited (MTL)'s sustainability reports"
+                ? "e.g. Research Modern Terminals Limited (MTL)'s sustainability reports"
                 : "e.g. Modern Terminals Limited is committed to sustainability in port operations"
             }
             className="mt-2 min-h-28 w-full rounded-xl border border-gray-300 p-4 shadow-sm focus:border-black focus:outline-none"
@@ -279,7 +316,7 @@ export default function Home() {
                 >
                   Google AI Studio
                 </a>{" "}
-                or configure <code className="bg-gray-200 px-1 py-0.5 rounded text-[10px]">GOOGLE_GENERATIVE_AI_API_KEY</code> in Vercel settings.
+                or configure <code className="bg-gray-200 px-1 py-0.5 rounded text-[10px]">GOOGLE_GENERATIVE_AI_API_KEY</code> in environment variables.
               </p>
             </div>
           )}
@@ -308,12 +345,27 @@ export default function Home() {
         </div>
       )}
 
+      {/* Results Controls */}
+      {data && (
+        <div className="mt-8 flex justify-end">
+          <button
+            type="button"
+            onClick={copyMarkdownReport}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            {copied ? "✓ Copied to Clipboard!" : "📋 Copy Report as Markdown"}
+          </button>
+        </div>
+      )}
+
       {/* Topic Research Output */}
       {data && data.result.mode === "topic" && (
-        <section className="mt-8 space-y-6">
+        <section className="mt-4 space-y-6">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-bold text-gray-900">Synthesized Web Answer</h2>
-            <p className="mt-3 leading-relaxed text-gray-800">{data.result.answer}</p>
+            <div className="prose prose-sm mt-3 max-w-none text-gray-800 leading-relaxed">
+              <ReactMarkdown>{data.result.answer}</ReactMarkdown>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -337,16 +389,15 @@ export default function Home() {
                       {finding.sourceIds.map((id) => {
                         const s = sourceFor(id);
                         return (
-                          <a
+                          <button
                             key={id}
-                            href={s?.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-md bg-blue-100 px-2 py-1 font-semibold text-blue-800 hover:underline"
-                            title={s?.title}
+                            type="button"
+                            onClick={() => s && setSelectedSource(s)}
+                            className="rounded-md bg-blue-100 px-2 py-1 font-semibold text-blue-800 hover:bg-blue-200 transition-colors"
+                            title={s?.title || id}
                           >
-                            [{id}] {s?.title.slice(0, 30)}...
-                          </a>
+                            [{id}] {s?.title ? s.title.slice(0, 25) + "..." : id}
+                          </button>
                         );
                       })}
                     </div>
@@ -355,12 +406,24 @@ export default function Home() {
               </ul>
             )}
           </div>
+
+          {/* Limitations section */}
+          {data.result.limitations && data.result.limitations.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+              <h3 className="text-sm font-bold text-amber-900">⚠️ Research Limitations & Gaps</h3>
+              <ul className="mt-2 list-disc list-inside text-xs text-amber-800 space-y-1">
+                {data.result.limitations.map((lim, idx) => (
+                  <li key={idx}>{lim}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 
       {/* Claim Verification Output */}
       {data && data.result.mode === "claim" && (
-        <section className="mt-8 space-y-6">
+        <section className="mt-4 space-y-6">
           {/* Verdict Banner */}
           <div
             className={`rounded-2xl border p-6 shadow-sm ${
@@ -403,9 +466,11 @@ export default function Home() {
               />
             </div>
 
-            <div className="mt-5 border-t border-black/10 pt-4">
+            <div className="mt-5 border-t border-black/10 pt-4 prose prose-sm max-w-none">
               <h3 className="text-sm font-bold opacity-90">Reasoning & Verdict Explanation</h3>
-              <p className="mt-1.5 text-sm leading-relaxed opacity-90">{data.result.reasoning}</p>
+              <div className="mt-1.5 text-sm leading-relaxed opacity-90">
+                <ReactMarkdown>{data.result.reasoning}</ReactMarkdown>
+              </div>
             </div>
           </div>
 
@@ -423,15 +488,14 @@ export default function Home() {
                       {item.sourceIds.map((id) => {
                         const s = sourceFor(id);
                         return (
-                          <a
+                          <button
                             key={id}
-                            href={s?.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded bg-green-200 px-2 py-0.5 font-medium text-green-900 hover:underline"
+                            type="button"
+                            onClick={() => s && setSelectedSource(s)}
+                            className="rounded bg-green-200 px-2 py-0.5 font-medium text-green-900 hover:bg-green-300"
                           >
-                            [{id}] {s?.title.slice(0, 30)}...
-                          </a>
+                            [{id}] {s?.title ? s.title.slice(0, 25) + "..." : id}
+                          </button>
                         );
                       })}
                     </div>
@@ -455,15 +519,14 @@ export default function Home() {
                       {item.sourceIds.map((id) => {
                         const s = sourceFor(id);
                         return (
-                          <a
+                          <button
                             key={id}
-                            href={s?.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded bg-red-200 px-2 py-0.5 font-medium text-red-900 hover:underline"
+                            type="button"
+                            onClick={() => s && setSelectedSource(s)}
+                            className="rounded bg-red-200 px-2 py-0.5 font-medium text-red-900 hover:bg-red-300"
                           >
-                            [{id}] {s?.title.slice(0, 30)}...
-                          </a>
+                            [{id}] {s?.title ? s.title.slice(0, 25) + "..." : id}
+                          </button>
                         );
                       })}
                     </div>
@@ -472,26 +535,45 @@ export default function Home() {
               </ul>
             </div>
           )}
+
+          {/* Limitations section */}
+          {data.result.limitations && data.result.limitations.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+              <h3 className="text-sm font-bold text-amber-900">⚠️ Evidence Limitations & Missing Data</h3>
+              <ul className="mt-2 list-disc list-inside text-xs text-amber-800 space-y-1">
+                {data.result.limitations.map((lim, idx) => (
+                  <li key={idx}>{lim}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 
-      {/* Sources Display */}
-      {data && data.sourceMetadata.length > 0 && (
+      {/* Sources Display Grid */}
+      {data && data.sources && data.sources.length > 0 && (
         <section className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-gray-900">Retrieved Web Sources ({data.sourceMetadata.length})</h2>
+          <h2 className="text-xl font-bold text-gray-900">Retrieved Web Sources ({data.sources.length})</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            {data.sourceMetadata.map((source) => (
+            {data.sources.map((source) => (
               <div
                 key={source.id}
                 className="flex flex-col justify-between rounded-xl border border-gray-100 bg-gray-50 p-4 transition-all hover:border-gray-300"
               >
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between">
                     <span className="rounded-md bg-black px-2 py-0.5 text-xs font-bold text-white">
                       {source.id}
                     </span>
-                    <h3 className="font-semibold text-gray-900 line-clamp-1">{source.title}</h3>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSource(source)}
+                      className="text-xs font-medium text-blue-600 hover:underline"
+                    >
+                      View Text Snippet
+                    </button>
                   </div>
+                  <h3 className="font-semibold text-gray-900 mt-2 line-clamp-1">{source.title}</h3>
                   <p className="mt-2 text-xs text-gray-600 line-clamp-3">{source.text}</p>
                 </div>
 
@@ -501,12 +583,60 @@ export default function Home() {
                   rel="noreferrer"
                   className="mt-3 inline-flex items-center text-xs font-semibold text-blue-600 hover:underline"
                 >
-                  Visit Source →
+                  Visit Original Source →
                 </a>
               </div>
             ))}
           </div>
         </section>
+      )}
+
+      {/* Interactive Source Snippet Modal */}
+      {selectedSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between border-b pb-4">
+              <div>
+                <span className="rounded-md bg-black px-2.5 py-1 text-xs font-bold text-white">
+                  Source {selectedSource.id}
+                </span>
+                <h3 className="text-lg font-bold text-gray-900 mt-2">{selectedSource.title}</h3>
+                <a
+                  href={selectedSource.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 hover:underline break-all"
+                >
+                  {selectedSource.url}
+                </a>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedSource(null)}
+                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-black"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">Extracted Markdown Content</h4>
+              <div className="mt-2 rounded-xl bg-gray-50 p-4 text-xs font-mono text-gray-800 whitespace-pre-wrap max-h-96 overflow-y-auto border border-gray-200">
+                {selectedSource.text}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedSource(null)}
+                className="rounded-xl bg-black px-5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

@@ -202,11 +202,22 @@ async function searchDDGApi(query: string): Promise<string[]> {
 
 export const UNIVERS_CLIENT_ENTITIES: Record<
   string,
-  { fullName: string; primaryDomain: string; contextTerms: string[] }
+  {
+    fullName: string;
+    primaryDomain: string;
+    directUrls?: string[];
+    contextTerms: string[];
+  }
 > = {
   mtl: {
     fullName: "Modern Terminals Limited",
     primaryDomain: "modernterminals.com",
+    directUrls: [
+      "https://www.modernterminals.com/en/sustainability/corporate-governance/corporate-environmental-policy/12/8/",
+      "https://www.modernterminals.com/en/sustainability/environment/green-terminal-model/10/12/",
+      "https://www.modernterminals.com/en/sustainability/sustainability-reports/19/",
+      "https://www.modernterminals.com/en/sustainability/",
+    ],
     contextTerms: [
       "Modern Terminals Limited",
       "Modern Terminals Group",
@@ -217,6 +228,12 @@ export const UNIVERS_CLIENT_ENTITIES: Record<
   "modern terminals": {
     fullName: "Modern Terminals Limited",
     primaryDomain: "modernterminals.com",
+    directUrls: [
+      "https://www.modernterminals.com/en/sustainability/corporate-governance/corporate-environmental-policy/12/8/",
+      "https://www.modernterminals.com/en/sustainability/environment/green-terminal-model/10/12/",
+      "https://www.modernterminals.com/en/sustainability/sustainability-reports/19/",
+      "https://www.modernterminals.com/en/sustainability/",
+    ],
     contextTerms: [
       "Modern Terminals Limited",
       "Modern Terminals Group",
@@ -226,6 +243,10 @@ export const UNIVERS_CLIENT_ENTITIES: Record<
   hactl: {
     fullName: "Hong Kong Air Cargo Terminals",
     primaryDomain: "hactl.com",
+    directUrls: [
+      "https://www.hactl.com/en-us/sustainability",
+      "https://www.hactl.com/en-us/about-hactl/green-superterminal",
+    ],
     contextTerms: [
       "Hong Kong Air Cargo Terminals Limited",
       "HACTL SuperTerminal 1",
@@ -235,56 +256,92 @@ export const UNIVERS_CLIENT_ENTITIES: Record<
   hit: {
     fullName: "Hongkong International Terminals",
     primaryDomain: "hit.com.hk",
+    directUrls: [
+      "https://www.hit.com.hk/en/Sustainability.html",
+      "https://www.hit.com.hk/en/Home.html",
+    ],
     contextTerms: ["Hongkong International Terminals", "HIT Hutchison Ports"],
   },
   aahk: {
     fullName: "Airport Authority Hong Kong",
     primaryDomain: "hongkongairport.com",
+    directUrls: [
+      "https://www.hongkongairport.com/en/sustainability/",
+      "https://www.hongkongairport.com/en/sustainability/sustainable-airport/carbon-management.page",
+    ],
     contextTerms: ["Airport Authority Hong Kong", "HKIA", "Hong Kong Airport"],
   },
   hkia: {
     fullName: "Hong Kong International Airport",
     primaryDomain: "hongkongairport.com",
+    directUrls: [
+      "https://www.hongkongairport.com/en/sustainability/",
+    ],
     contextTerms: ["Hong Kong International Airport", "Airport Authority"],
   },
   clp: {
     fullName: "CLP Power Hong Kong",
     primaryDomain: "clpgroup.com",
+    directUrls: [
+      "https://www.clpgroup.com/en/sustainability.html",
+    ],
     contextTerms: ["CLP Power Hong Kong", "CLP Group energy"],
   },
   hec: {
     fullName: "Hongkong Electric Company",
     primaryDomain: "hkelectric.com",
+    directUrls: [
+      "https://www.hkelectric.com/en/sustainability",
+    ],
     contextTerms: ["Hongkong Electric", "HK Electric"],
   },
   mtr: {
     fullName: "MTR Corporation",
     primaryDomain: "mtr.com.hk",
+    directUrls: [
+      "https://www.mtr.com.hk/en/corporate/sustainability/",
+    ],
     contextTerms: ["MTR Corporation", "MTR Hong Kong"],
   },
   swire: {
     fullName: "Swire Properties",
     primaryDomain: "swireproperties.com",
+    directUrls: [
+      "https://www.swireproperties.com/en/sustainable-development/",
+      "https://www.swireproperties.com/en/sustainable-development/sd-reports/",
+    ],
     contextTerms: ["Swire Properties", "Swire Pacific sustainability"],
   },
   shkp: {
     fullName: "Sun Hung Kai Properties",
     primaryDomain: "shkp.com",
+    directUrls: [
+      "https://www.shkp.com/en-US/sustainability",
+    ],
     contextTerms: ["Sun Hung Kai Properties", "SHKP"],
   },
   hld: {
     fullName: "Henderson Land Development",
     primaryDomain: "hld.com",
+    directUrls: [
+      "https://www.hld.com/en/sustainability/",
+    ],
     contextTerms: ["Henderson Land Development", "Henderson Land"],
   },
   psa: {
     fullName: "PSA International",
     primaryDomain: "globalpsa.com",
+    directUrls: [
+      "https://www.globalpsa.com/sustainability/",
+    ],
     contextTerms: ["PSA International port terminals", "PSA Corporation"],
   },
   "link reit": {
     fullName: "Link Real Estate Investment Trust",
     primaryDomain: "linkreit.com",
+    directUrls: [
+      "https://www.linkreit.com/en/sustainability/",
+    ],
     contextTerms: ["Link REIT", "Link Asset Management"],
   },
 };
@@ -293,21 +350,27 @@ async function searchWikipediaSources(
   query: string,
   limit = 3
 ): Promise<string[]> {
-  if (!query) return [];
+  // Clean query of operators and restrict to concise topic title
+  let targetQuery = query
+    .replace(/site:\S+/gi, "")
+    .replace(/filetype:\S+/gi, "")
+    .replace(/["’'()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  // If query is an acronym matching a Univers entity, search using the expanded full name
-  let targetQuery = query;
-  const lower = query.toLowerCase().trim();
-  if (UNIVERS_CLIENT_ENTITIES[lower]) {
-    targetQuery = UNIVERS_CLIENT_ENTITIES[lower].fullName;
-  } else {
-    for (const [key, ent] of Object.entries(UNIVERS_CLIENT_ENTITIES)) {
-      const pattern = new RegExp(`\\b${key}\\b`, "i");
-      if (pattern.test(lower)) {
-        targetQuery = query.replace(pattern, ent.fullName);
-        break;
-      }
+  const lower = targetQuery.toLowerCase();
+  for (const [key, ent] of Object.entries(UNIVERS_CLIENT_ENTITIES)) {
+    const pattern = new RegExp(`\\b${key}\\b`, "i");
+    if (pattern.test(lower)) {
+      targetQuery = ent.fullName;
+      break;
     }
+  }
+
+  // If query is longer than 5 words, take the first 4 words for Wikipedia search
+  const queryWords = targetQuery.split(/\s+/);
+  if (queryWords.length > 5) {
+    targetQuery = queryWords.slice(0, 4).join(" ");
   }
 
   try {
@@ -321,7 +384,7 @@ async function searchWikipediaSources(
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!res.ok) return [];
@@ -350,13 +413,13 @@ function generateCandidateQueries(query: string): string[] {
     const pattern = new RegExp(`\\b${key}\\b`, "i");
     if (pattern.test(lowerQuery)) {
       const rest = normalized.replace(pattern, "").replace(/\s+/g, " ").trim();
+      candidates.push(`"${entity.fullName}" sustainability report`);
+      candidates.push(`"${entity.fullName}" energy electricity`);
+      candidates.push(`"${entity.fullName}" decarbonization emissions`);
       candidates.push(`site:${entity.primaryDomain} sustainability`);
       candidates.push(`site:${entity.primaryDomain} energy OR electricity OR HVAC`);
       candidates.push(`site:${entity.primaryDomain} filetype:pdf`);
-      candidates.push(`"${entity.fullName}" sustainability report`);
-      candidates.push(`"${entity.fullName}" ${rest}`.trim());
-      candidates.push(`"${entity.fullName}" energy electricity`);
-      candidates.push(`"${entity.fullName}" decarbonization emissions`);
+      if (rest) candidates.push(`"${entity.fullName}" ${rest}`.trim());
       break;
     }
   }
@@ -417,9 +480,19 @@ async function searchOpenAlexSources(
   limit = 3
 ): Promise<string[]> {
   if (!query) return [];
+  // Clean query of operators and restrict to 5 concise words
+  const cleanQ = query
+    .replace(/site:\S+/gi, "")
+    .replace(/filetype:\S+/gi, "")
+    .replace(/["’'()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleanQ) return [];
+  const targetWords = cleanQ.split(/\s+/).slice(0, 5).join(" ");
+
   try {
     const url = `https://api.openalex.org/works?search=${encodeURIComponent(
-      query
+      targetWords
     )}&per-page=${limit * 2}&sort=relevance_score:desc`;
 
     const res = await fetch(url, {
@@ -428,7 +501,7 @@ async function searchOpenAlexSources(
           "ApprovedResearchAgent/1.0 (mailto:research-agent@example.com)",
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!res.ok) return [];
@@ -603,11 +676,22 @@ export async function searchWebSources(
 
   // Check if query matched any known Univers client entity
   const lowerQuery = query.toLowerCase();
-  let matchedEntity: { fullName: string; primaryDomain: string } | undefined;
+  let matchedEntity:
+    | (typeof UNIVERS_CLIENT_ENTITIES)[string]
+    | undefined;
   for (const [key, entity] of Object.entries(UNIVERS_CLIENT_ENTITIES)) {
     if (new RegExp(`\\b${key}\\b`, "i").test(lowerQuery)) {
       matchedEntity = entity;
       break;
+    }
+  }
+
+  // If matched client entity has verified direct URLs, seed them into the candidate pool
+  if (matchedEntity && matchedEntity.directUrls) {
+    for (const directUrl of matchedEntity.directUrls) {
+      if (isApprovedUrl(directUrl) && !urls.includes(directUrl)) {
+        urls.push(directUrl);
+      }
     }
   }
 

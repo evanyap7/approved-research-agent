@@ -60,11 +60,18 @@ async function fetchBufferWithTimeout(
     throw new Error("Too many redirects");
   }
 
+  let safeUrl = targetUrl;
+  try {
+    safeUrl = encodeURI(decodeURI(targetUrl));
+  } catch {
+    safeUrl = targetUrl;
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(targetUrl, {
+    const response = await fetch(safeUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -100,7 +107,13 @@ async function fetchViaJinaReader(
   targetUrl: string
 ): Promise<{ title: string; text: string } | null> {
   try {
-    const jinaUrl = `https://r.jina.ai/${targetUrl}`;
+    let safeTarget = targetUrl;
+    try {
+      safeTarget = encodeURI(decodeURI(targetUrl));
+    } catch {
+      safeTarget = targetUrl;
+    }
+    const jinaUrl = `https://r.jina.ai/${safeTarget}`;
     const res = await fetch(jinaUrl, {
       headers: {
         "User-Agent":

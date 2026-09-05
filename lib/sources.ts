@@ -242,6 +242,86 @@ function generateCandidateQueries(query: string): string[] {
   return Array.from(new Set(candidates)).filter(Boolean);
 }
 
+async function searchOpenAlexSources(
+  query: string,
+  limit = 3
+): Promise<string[]> {
+  if (!query) return [];
+  try {
+    const url = `https://api.openalex.org/works?search=${encodeURIComponent(
+      query
+    )}&per-page=${limit}&sort=relevance_score:desc`;
+
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "ApprovedResearchAgent/1.0 (mailto:research-agent@example.com)",
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!res.ok) return [];
+    const parsed = await res.json();
+    const results = parsed.results || [];
+    const urls: string[] = [];
+
+    for (const r of results) {
+      const targetUrl =
+        r.open_access?.oa_url ||
+        r.primary_location?.pdf_url ||
+        r.primary_location?.landing_page_url ||
+        r.doi;
+
+      if (targetUrl && typeof targetUrl === "string") {
+        urls.push(targetUrl);
+      }
+    }
+
+    return urls;
+  } catch {
+    return [];
+  }
+}
+
+async function searchHackerNewsSources(
+  query: string,
+  limit = 3
+): Promise<string[]> {
+  if (!query) return [];
+  try {
+    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(
+      query
+    )}&tags=story&hitsPerPage=${limit}`;
+
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) return [];
+    const parsed = await res.json();
+    const hits = parsed.hits || [];
+    const urls: string[] = [];
+
+    for (const hit of hits) {
+      if (hit.url && typeof hit.url === "string") {
+        urls.push(hit.url);
+      } else if (hit.objectID) {
+        urls.push(`https://news.ycombinator.com/item?id=${hit.objectID}`);
+      }
+    }
+
+    return urls;
+  } catch {
+    return [];
+  }
+}
+
 export async function searchWebSources(
   query: string,
   limit = 4
@@ -252,13 +332,13 @@ export async function searchWebSources(
   for (const q of candidateQueries) {
     if (urls.length >= limit) break;
 
-    // 1. Tavily API (if configured)
+    // 1. Tavily API (if configured with API key)
     const tavily = await searchTavilyApi(q, limit);
     for (const u of tavily) {
       if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
     }
 
-    // 2. Serper API (if configured)
+    // 2. Serper API (if configured with API key)
     if (urls.length < limit) {
       const serper = await searchSerperApi(q, limit);
       for (const u of serper) {
@@ -266,7 +346,15 @@ export async function searchWebSources(
       }
     }
 
-    // 3. DuckDuckGo HTML scraper fallback
+    // 3. OpenAlex Scholarly API (Completely free, open access catalog of 250M+ research works)
+    if (urls.length < limit) {
+      const openAlex = await searchOpenAlexSources(q, limit);
+      for (const u of openAlex) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      }
+    }
+
+    // 4. DuckDuckGo HTML scraper fallback
     if (urls.length < limit) {
       const ddgHtml = await searchDDGHtml(q);
       for (const u of ddgHtml) {
@@ -274,7 +362,7 @@ export async function searchWebSources(
       }
     }
 
-    // 4. DuckDuckGo API fallback
+    // 5. DuckDuckGo API fallback
     if (urls.length < limit) {
       const ddgApi = await searchDDGApi(q);
       for (const u of ddgApi) {
@@ -282,7 +370,15 @@ export async function searchWebSources(
       }
     }
 
-    // 5. Wikipedia API fallback
+    // 6. Hacker News (Algolia API) fallback for tech discussions and referenced web articles
+    if (urls.length < limit) {
+      const hn = await searchHackerNewsSources(q, limit);
+      for (const u of hn) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      }
+    }
+
+    // 7. Wikipedia API fallback
     if (urls.length < limit) {
       const wiki = await searchWikipediaSources(q, limit);
       for (const u of wiki) {

@@ -83,6 +83,60 @@ async function fetchBufferWithTimeout(
   }
 }
 
+async function fetchViaJinaReader(
+  targetUrl: string
+): Promise<{ title: string; text: string } | null> {
+  try {
+    const jinaUrl = `https://r.jina.ai/${targetUrl}`;
+    const res = await fetch(jinaUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "text/plain",
+      },
+      signal: AbortSignal.timeout(9000),
+    });
+
+    const body = await res.text();
+    // Jina Reader sometimes preserves origin status 403 but returns full parsed markdown
+    if (!body || body.length < 150) return null;
+    if (
+      body.includes("Please confirm you are a human") ||
+      body.includes("Checking your browser") ||
+      body.includes("Client Challenge")
+    ) {
+      return null;
+    }
+
+    let title = "Web Source";
+    const titleMatch = body.match(/^Title:\s*(.+)$/m);
+    if (titleMatch && titleMatch[1]) {
+      title = titleMatch[1].trim();
+    }
+
+    return { title, text: body.slice(0, MAX_CHARS_PER_SOURCE) };
+  } catch {
+    return null;
+  }
+}
+
+function isChallengePage(text: string, title = ""): boolean {
+  const combined = (title + " " + text).toLowerCase();
+  return (
+    combined.includes("checking your browser") ||
+    combined.includes("client challenge") ||
+    combined.includes("cloudflare ray id") ||
+    combined.includes("please verify you are a human") ||
+    combined.includes("enable javascript and cookies") ||
+    combined.includes("just a moment...") ||
+    combined.includes("are you a robot?") ||
+    combined.includes("ddos protection by cloudflare") ||
+    combined.includes("a required part of this site couldn’t load") ||
+    combined.includes("a required part of this site couldn't load") ||
+    combined.includes("security check to access")
+  );
+}
+
 export async function fetchApprovedSource(
   url: string,
   id: string
@@ -91,9 +145,29 @@ export async function fetchApprovedSource(
     throw new Error("This URL is not from an approved source.");
   }
 
-  const { status, contentType, buffer } = await fetchBufferWithTimeout(url);
+  let status = 0;
+  let contentType = "";
+  let buffer: Buffer | null = null;
+
+  try {
+    const result = await fetchBufferWithTimeout(url);
+    status = result.status;
+    contentType = result.contentType;
+    buffer = result.buffer;
+  } catch (error) {
+    // If direct fetch fails (e.g. 403 or network issue), attempt Jina Reader fallback
+    const jinaFallback = await fetchViaJinaReader(url);
+    if (jinaFallback && !isChallengePage(jinaFallback.text, jinaFallback.title)) {
+      return { id, title: jinaFallback.title, url, text: jinaFallback.text };
+    }
+    throw error;
+  }
 
   if (status < 200 || status >= 300) {
+    const jinaFallback = await fetchViaJinaReader(url);
+    if (jinaFallback && !isChallengePage(jinaFallback.text, jinaFallback.title)) {
+      return { id, title: jinaFallback.title, url, text: jinaFallback.text };
+    }
     throw new Error(`Could not retrieve source (${url}): ${status}`);
   }
 
@@ -106,10 +180,10 @@ export async function fetchApprovedSource(
     url.toLowerCase().endsWith(".pdf")
   ) {
     title = `PDF Document (${url.split("/").pop() || "Report"})`;
-    text = await parsePdfBuffer(buffer);
+    text = await parsePdfBuffer(buffer!);
   } else {
     // Handle HTML pages
-    const html = buffer.toString("utf8");
+    const html = buffer!.toString("utf8");
     const $ = cheerio.load(html);
 
     // Extract attached PDF links on landing pages (e.g. Sustainability reports)
@@ -136,7 +210,7 @@ export async function fetchApprovedSource(
     ).remove();
 
     const mainHtml = $("main").length ? $("main").html() : $("body").html();
-    
+
     if (mainHtml) {
       try {
         text = turndownService.turndown(mainHtml).trim();
@@ -167,7 +241,21 @@ export async function fetchApprovedSource(
 
   text = text.slice(0, MAX_CHARS_PER_SOURCE);
 
-  if (text.length < 50) {
+  // If text is a bot challenge page or too short (SPA), fall back to Jina Reader
+  if (text.length < 100 || isChallengePage(text, title)) {
+    const jinaFallback = await fetchViaJinaReader(url);
+    if (
+      jinaFallback &&
+      jinaFallback.text.length >= 100 &&
+      !isChallengePage(jinaFallback.text, jinaFallback.title)
+    ) {
+      return {
+        id,
+        title: jinaFallback.title || title,
+        url,
+        text: jinaFallback.text,
+      };
+    }
     throw new Error("The source did not contain enough readable text.");
   }
 

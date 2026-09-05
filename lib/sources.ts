@@ -131,6 +131,11 @@ async function searchDDGHtml(query: string): Promise<string[]> {
     const $ = cheerio.load(html);
     const urls: string[] = [];
 
+    const isCodeQuery =
+      /\b(code|github|git|repo|repository|npm|library|sdk|package|script|programming)\b/i.test(
+        query
+      );
+
     $(".result__url, .result__a, .result__snippet").each((_, el) => {
       const href = $(el).attr("href");
       if (href) {
@@ -149,6 +154,7 @@ async function searchDDGHtml(query: string): Promise<string[]> {
           !cleanUrl.includes("duckduckgo.com/y.js") &&
           !cleanUrl.includes("bing.com/aclick") &&
           !cleanUrl.includes("ad_domain=") &&
+          (!cleanUrl.includes("github.com") || isCodeQuery) &&
           !urls.includes(cleanUrl)
         ) {
           urls.push(cleanUrl);
@@ -229,7 +235,9 @@ async function searchWikipediaSources(
 
 function generateCandidateQueries(query: string): string[] {
   const candidates: string[] = [];
-  const clean = query.replace(/[^\w\s]/g, " ");
+  // Normalize possessives like HACTL's or HACTL’s to HACTL
+  const normalized = query.replace(/['’]s\b/gi, "");
+  const clean = normalized.replace(/[^\w\s]/g, " ");
 
   // 1. Clean keywords without conversational fillers
   const stopwords = new Set([
@@ -242,7 +250,24 @@ function generateCandidateQueries(query: string): string[] {
     .filter((w) => w.length > 1 && !stopwords.has(w.toLowerCase()));
 
   if (words.length > 0) {
-    candidates.push(words.join(" "));
+    const fullClean = words.join(" ");
+    candidates.push(fullClean);
+
+    // If query has 3 or more keywords, also try the primary 2-word prefix (e.g. "HACTL HVAC")
+    if (words.length >= 3) {
+      candidates.push(words.slice(0, 2).join(" "));
+    }
+
+    // Expand common technical/operational variations (e.g. HVAC -> energy / electricity)
+    const lowerClean = fullClean.toLowerCase();
+    if (lowerClean.includes("hvac")) {
+      candidates.push(fullClean.replace(/hvac/gi, "energy"));
+      candidates.push(fullClean.replace(/hvac/gi, "electricity"));
+    }
+    if (lowerClean.includes("consumption")) {
+      candidates.push(fullClean.replace(/consumption/gi, "sustainability"));
+      candidates.push(fullClean.replace(/consumption/gi, "reduction"));
+    }
   }
 
   // 2. Direct original query
@@ -250,7 +275,7 @@ function generateCandidateQueries(query: string): string[] {
     candidates.push(query);
   }
 
-  return candidates.filter(Boolean);
+  return Array.from(new Set(candidates)).filter(Boolean);
 }
 
 const PAYWALLED_DOMAINS = [

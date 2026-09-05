@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #07090e;
+  --foreground: #f1f5f9;
 }
 
 @theme inline {
@@ -12,15 +12,120 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  background-color: #07090e;
+  color: #f1f5f9;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom modern sleek scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Ambient glow utility */
+.ambient-glow {
+  background: radial-gradient(circle at 50% -20%, rgba(99, 102, 241, 0.15), transparent 70%),
+              radial-gradient(circle at 85% 30%, rgba(14, 165, 233, 0.08), transparent 50%),
+              radial-gradient(circle at 15% 40%, rgba(168, 85, 247, 0.08), transparent 50%);
+}
+
+/* Shimmer pulse effect for loading states */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.animate-shimmer {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* Markdown prose enhancements */
+.prose-custom h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-top: 1.25rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.02em;
+}
+
+.prose-custom h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.prose-custom h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.prose-custom p {
+  color: #cbd5e1;
+  line-height: 1.7;
+  margin-bottom: 0.85rem;
+  font-size: 0.95rem;
+}
+
+.prose-custom ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin-bottom: 0.85rem;
+  color: #cbd5e1;
+}
+
+.prose-custom li {
+  margin-bottom: 0.35rem;
+  line-height: 1.6;
+}
+
+.prose-custom strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.prose-custom blockquote {
+  border-left: 3px solid #6366f1;
+  padding-left: 1rem;
+  font-style: italic;
+  color: #94a3b8;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose-custom code {
+  background-color: rgba(30, 41, 59, 0.8);
+  color: #a5b4fc;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.375rem;
+  font-size: 0.85em;
+  font-family: var(--font-geist-mono), monospace;
 }

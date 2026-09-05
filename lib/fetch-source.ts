@@ -2,8 +2,8 @@ import * as cheerio from "cheerio";
 import TurndownService from "turndown";
 import { isApprovedUrl } from "./sources";
 
-const MAX_CHARS_PER_SOURCE = 35_000;
-const FETCH_TIMEOUT_MS = 10_000;
+const MAX_CHARS_PER_SOURCE = 30_000;
+const FETCH_TIMEOUT_MS = 6_000;
 
 export type SourcePacket = {
   id: string;
@@ -32,7 +32,7 @@ async function parsePdfBuffer(buffer: Buffer): Promise<string> {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require("path");
 
-    const pdfOptions: Record<string, unknown> = { first: 35 };
+    const pdfOptions: Record<string, unknown> = { first: 20 };
     try {
       const pdfjsDir = path.dirname(require.resolve("pdfjs-dist/package.json"));
       pdfOptions.cMapUrl = path.join(pdfjsDir, "cmaps") + "/";

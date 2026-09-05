@@ -611,8 +611,8 @@ export async function searchWebSources(
     }
   }
 
-  for (const q of candidateQueries) {
-    if (urls.length >= limit * 2) break;
+  for (const q of candidateQueries.slice(0, 3)) {
+    if (urls.length >= limit) break;
 
     // 1. Tavily API (if configured with API key)
     const tavily = await searchTavilyApi(q, 4);
@@ -621,7 +621,7 @@ export async function searchWebSources(
     }
 
     // 2. Serper API (if configured with API key)
-    if (urls.length < limit * 2) {
+    if (urls.length < limit) {
       const serper = await searchSerperApi(q, 4);
       for (const u of serper) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
@@ -629,7 +629,7 @@ export async function searchWebSources(
     }
 
     // 3. DuckDuckGo HTML Scraper (live web, client domains, PDF disclosures)
-    if (urls.length < limit * 2) {
+    if (urls.length < limit) {
       const ddgHtml = await searchDDGHtml(q);
       for (const u of ddgHtml) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
@@ -637,7 +637,7 @@ export async function searchWebSources(
     }
 
     // 4. DuckDuckGo API fallback
-    if (urls.length < limit * 2) {
+    if (urls.length < limit) {
       const ddgApi = await searchDDGApi(q);
       for (const u of ddgApi) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
@@ -645,7 +645,7 @@ export async function searchWebSources(
     }
 
     // 5. Wikipedia API (limit to 1 encyclopedic article)
-    if (urls.length < limit * 2) {
+    if (urls.length < limit) {
       const wiki = await searchWikipediaSources(q, 1);
       for (const u of wiki) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
@@ -653,17 +653,9 @@ export async function searchWebSources(
     }
 
     // 6. OpenAlex Scholarly API (limit to 1 academic paper if entity is matched)
-    if (urls.length < limit * 2) {
+    if (urls.length < limit) {
       const openAlex = await searchOpenAlexSources(q, matchedEntity ? 1 : 2);
       for (const u of openAlex) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
-      }
-    }
-
-    // 7. Hacker News (Algolia API) fallback for non-code tech discussions
-    if (urls.length < limit * 2) {
-      const hn = await searchHackerNewsSources(q, 2);
-      for (const u of hn) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }

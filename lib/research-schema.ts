@@ -1,46 +1,54 @@
 import { z } from "zod";
 
 export const researchResultSchema = z.object({
-  answer: z.string().min(1).max(2_500),
+  answer: z.string().min(1).describe("Comprehensive markdown synthesis of findings and engineering analysis"),
 
   findings: z
     .array(
       z.object({
-        claim: z.string().min(1).max(500),
+        claim: z.string().min(1),
         sourceIds: z.array(z.string()).min(1),
-        confidence: z.enum(["high", "medium", "low"]),
+        confidence: z.enum(["high", "medium", "low"]).optional().default("high"),
       })
     )
-    .min(0)
-    .max(8),
+    .optional()
+    .default([]),
 
-  limitations: z.array(z.string().max(300)).max(5),
+  limitations: z.array(z.string()).optional().default([]),
 
-  sourcesUsed: z.array(z.string()).min(0).max(10),
+  sourcesUsed: z.array(z.string()).optional().default([]),
 });
 
 export const claimVerificationSchema = z.object({
-  claim: z.string().min(1).max(500),
+  claim: z.string().min(1),
   verdict: z.enum(["VERIFIED", "REFUTED", "UNVERIFIED"]),
   truthRating: z.number().min(0).max(100),
-  reasoning: z.string().min(1).max(2_000),
+  reasoning: z.string().min(1),
 
-  supportingEvidence: z.array(
-    z.object({
-      claim: z.string().min(1).max(500),
-      sourceIds: z.array(z.string()).min(1),
-    })
-  ),
+  supportingEvidence: z
+    .array(
+      z.object({
+        claim: z.string().min(1),
+        sourceIds: z.array(z.string()).min(1),
+        confidence: z.enum(["high", "medium", "low"]).optional().default("high"),
+      })
+    )
+    .optional()
+    .default([]),
 
-  contradictingEvidence: z.array(
-    z.object({
-      claim: z.string().min(1).max(500),
-      sourceIds: z.array(z.string()).min(1),
-    })
-  ),
+  contradictingEvidence: z
+    .array(
+      z.object({
+        claim: z.string().min(1),
+        sourceIds: z.array(z.string()).min(1),
+        confidence: z.enum(["high", "medium", "low"]).optional().default("high"),
+      })
+    )
+    .optional()
+    .default([]),
 
-  limitations: z.array(z.string().max(300)).max(5),
-  sourcesUsed: z.array(z.string()).min(0).max(10),
+  limitations: z.array(z.string()).optional().default([]),
+  sourcesUsed: z.array(z.string()).optional().default([]),
 });
 
 export type ResearchResult = z.infer<typeof researchResultSchema>;

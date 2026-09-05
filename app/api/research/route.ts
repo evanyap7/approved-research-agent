@@ -41,7 +41,7 @@ export async function POST(request: Request) {
         );
       }
     } else {
-      targetUrls = await searchWebSources(body.question, 7);
+      targetUrls = await searchWebSources(body.question, 5);
     }
 
     const sourceResults = await Promise.allSettled(
@@ -61,9 +61,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Limit to top 5 working sources and re-index cleanly as S1, S2, S3...
+    // Limit to top 4 working sources and re-index cleanly as S1, S2, S3...
     const sources = successfulSources
-      .slice(0, 5)
+      .slice(0, 4)
       .map((source, index) => ({
         ...source,
         id: `S${index + 1}`,

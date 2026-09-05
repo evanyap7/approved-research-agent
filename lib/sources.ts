@@ -144,7 +144,13 @@ async function searchDDGHtml(query: string): Promise<string[]> {
             // ignore
           }
         }
-        if (cleanUrl.startsWith("http") && !urls.includes(cleanUrl)) {
+        if (
+          cleanUrl.startsWith("http") &&
+          !cleanUrl.includes("duckduckgo.com/y.js") &&
+          !cleanUrl.includes("bing.com/aclick") &&
+          !cleanUrl.includes("ad_domain=") &&
+          !urls.includes(cleanUrl)
+        ) {
           urls.push(cleanUrl);
         }
       }
@@ -225,22 +231,39 @@ function generateCandidateQueries(query: string): string[] {
   const candidates: string[] = [];
   const clean = query.replace(/[^\w\s]/g, " ");
 
-  // 1. Direct original query
-  candidates.push(query);
-
-  // 2. Main nouns without conversational fillers
+  // 1. Clean keywords without conversational fillers
   const stopwords = new Set([
     "research", "find", "come", "up", "with", "a", "number", "for", "their",
-    "and", "the", "of", "in", "to", "about", "give", "me", "tell", "what", "is", "how", "does"
+    "and", "the", "of", "in", "to", "about", "give", "me", "tell", "what", "is", "how", "does",
+    "do", "look", "into", "search", "investigate", "show", "can", "you", "please", "information", "on"
   ]);
   const words = clean
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !stopwords.has(w.toLowerCase()));
+    .filter((w) => w.length > 1 && !stopwords.has(w.toLowerCase()));
 
-  if (words.length > 0) candidates.push(words.join(" "));
+  if (words.length > 0) {
+    candidates.push(words.join(" "));
+  }
 
-  return Array.from(new Set(candidates)).filter(Boolean);
+  // 2. Direct original query
+  if (!candidates.includes(query)) {
+    candidates.push(query);
+  }
+
+  return candidates.filter(Boolean);
 }
+
+const PAYWALLED_DOMAINS = [
+  "sciencedirect.com",
+  "springer.com",
+  "wiley.com",
+  "tandfonline.com",
+  "ieeexplore.ieee.org",
+  "cell.com",
+  "thelancet.com",
+  "nejm.org",
+  "academic.oup.com",
+];
 
 async function searchOpenAlexSources(
   query: string,
@@ -250,7 +273,7 @@ async function searchOpenAlexSources(
   try {
     const url = `https://api.openalex.org/works?search=${encodeURIComponent(
       query
-    )}&per-page=${limit}&sort=relevance_score:desc`;
+    )}&per-page=${limit * 2}&sort=relevance_score:desc`;
 
     const res = await fetch(url, {
       headers: {
@@ -274,8 +297,14 @@ async function searchOpenAlexSources(
         r.doi;
 
       if (targetUrl && typeof targetUrl === "string") {
-        urls.push(targetUrl);
+        const isPaywalled = PAYWALLED_DOMAINS.some((domain) =>
+          targetUrl.toLowerCase().includes(domain)
+        );
+        if (!isPaywalled && !urls.includes(targetUrl)) {
+          urls.push(targetUrl);
+        }
       }
+      if (urls.length >= limit) break;
     }
 
     return urls;
@@ -324,7 +353,7 @@ async function searchHackerNewsSources(
 
 export async function searchWebSources(
   query: string,
-  limit = 4
+  limit = 6
 ): Promise<string[]> {
   const urls: string[] = [];
   const candidateQueries = generateCandidateQueries(query);
@@ -346,15 +375,23 @@ export async function searchWebSources(
       }
     }
 
-    // 3. OpenAlex Scholarly API (Completely free, open access catalog of 250M+ research works)
+    // 3. Wikipedia API (Most reliable, free, comprehensive encyclopedic reference)
     if (urls.length < limit) {
-      const openAlex = await searchOpenAlexSources(q, limit);
+      const wiki = await searchWikipediaSources(q, 3);
+      for (const u of wiki) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      }
+    }
+
+    // 4. OpenAlex Scholarly API (Free open-access scientific & academic studies)
+    if (urls.length < limit) {
+      const openAlex = await searchOpenAlexSources(q, 3);
       for (const u of openAlex) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
 
-    // 4. DuckDuckGo HTML scraper fallback
+    // 5. DuckDuckGo HTML scraper fallback
     if (urls.length < limit) {
       const ddgHtml = await searchDDGHtml(q);
       for (const u of ddgHtml) {
@@ -362,7 +399,7 @@ export async function searchWebSources(
       }
     }
 
-    // 5. DuckDuckGo API fallback
+    // 6. DuckDuckGo API fallback
     if (urls.length < limit) {
       const ddgApi = await searchDDGApi(q);
       for (const u of ddgApi) {
@@ -370,18 +407,10 @@ export async function searchWebSources(
       }
     }
 
-    // 6. Hacker News (Algolia API) fallback for tech discussions and referenced web articles
+    // 7. Hacker News (Algolia API) fallback for tech discussions & web articles
     if (urls.length < limit) {
-      const hn = await searchHackerNewsSources(q, limit);
+      const hn = await searchHackerNewsSources(q, 3);
       for (const u of hn) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
-      }
-    }
-
-    // 7. Wikipedia API fallback
-    if (urls.length < limit) {
-      const wiki = await searchWikipediaSources(q, limit);
-      for (const u of wiki) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }

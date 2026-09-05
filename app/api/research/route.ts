@@ -41,25 +41,33 @@ export async function POST(request: Request) {
         );
       }
     } else {
-      targetUrls = await searchWebSources(body.question, 4);
+      targetUrls = await searchWebSources(body.question, 7);
     }
 
     const sourceResults = await Promise.allSettled(
-      targetUrls.map((url, index) => fetchApprovedSource(url, `S${index + 1}`))
+      targetUrls.map((url, index) => fetchApprovedSource(url, `candidate_${index + 1}`))
     );
 
-    const sources = sourceResults
+    const successfulSources = sourceResults
       .filter(
         (res): res is PromiseFulfilledResult<SourcePacket> =>
           res.status === "fulfilled"
       )
       .map((res) => res.value);
 
-    if (sources.length === 0) {
+    if (successfulSources.length === 0) {
       throw new Error(
-        "Could not retrieve content from any of the target web sources."
+        "Could not retrieve readable content from any of the target web sources. Please try refining your query or provide custom URLs."
       );
     }
+
+    // Limit to top 4 working sources and re-index cleanly as S1, S2, S3...
+    const sources = successfulSources
+      .slice(0, 4)
+      .map((source, index) => ({
+        ...source,
+        id: `S${index + 1}`,
+      }));
 
     const sourceBlock = sources
       .map(

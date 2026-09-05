@@ -202,10 +202,21 @@ async function searchDDGApi(query: string): Promise<string[]> {
 
 export const UNIVERS_CLIENT_ENTITIES: Record<
   string,
-  { fullName: string; contextTerms: string[] }
+  { fullName: string; primaryDomain: string; contextTerms: string[] }
 > = {
   mtl: {
     fullName: "Modern Terminals Limited",
+    primaryDomain: "modernterminals.com",
+    contextTerms: [
+      "Modern Terminals Limited",
+      "Modern Terminals Group",
+      "modernterminals.com",
+      "Kwai Tsing Container Terminals",
+    ],
+  },
+  "modern terminals": {
+    fullName: "Modern Terminals Limited",
+    primaryDomain: "modernterminals.com",
     contextTerms: [
       "Modern Terminals Limited",
       "Modern Terminals Group",
@@ -214,6 +225,7 @@ export const UNIVERS_CLIENT_ENTITIES: Record<
   },
   hactl: {
     fullName: "Hong Kong Air Cargo Terminals",
+    primaryDomain: "hactl.com",
     contextTerms: [
       "Hong Kong Air Cargo Terminals Limited",
       "HACTL SuperTerminal 1",
@@ -222,46 +234,57 @@ export const UNIVERS_CLIENT_ENTITIES: Record<
   },
   hit: {
     fullName: "Hongkong International Terminals",
+    primaryDomain: "hit.com.hk",
     contextTerms: ["Hongkong International Terminals", "HIT Hutchison Ports"],
   },
   aahk: {
     fullName: "Airport Authority Hong Kong",
+    primaryDomain: "hongkongairport.com",
     contextTerms: ["Airport Authority Hong Kong", "HKIA", "Hong Kong Airport"],
   },
   hkia: {
     fullName: "Hong Kong International Airport",
+    primaryDomain: "hongkongairport.com",
     contextTerms: ["Hong Kong International Airport", "Airport Authority"],
   },
   clp: {
     fullName: "CLP Power Hong Kong",
+    primaryDomain: "clpgroup.com",
     contextTerms: ["CLP Power Hong Kong", "CLP Group energy"],
   },
   hec: {
     fullName: "Hongkong Electric Company",
+    primaryDomain: "hkelectric.com",
     contextTerms: ["Hongkong Electric", "HK Electric"],
   },
   mtr: {
     fullName: "MTR Corporation",
+    primaryDomain: "mtr.com.hk",
     contextTerms: ["MTR Corporation", "MTR Hong Kong"],
   },
   swire: {
     fullName: "Swire Properties",
+    primaryDomain: "swireproperties.com",
     contextTerms: ["Swire Properties", "Swire Pacific sustainability"],
   },
   shkp: {
     fullName: "Sun Hung Kai Properties",
+    primaryDomain: "shkp.com",
     contextTerms: ["Sun Hung Kai Properties", "SHKP"],
   },
   hld: {
     fullName: "Henderson Land Development",
+    primaryDomain: "hld.com",
     contextTerms: ["Henderson Land Development", "Henderson Land"],
   },
   psa: {
     fullName: "PSA International",
+    primaryDomain: "globalpsa.com",
     contextTerms: ["PSA International port terminals", "PSA Corporation"],
   },
   "link reit": {
     fullName: "Link Real Estate Investment Trust",
+    primaryDomain: "linkreit.com",
     contextTerms: ["Link REIT", "Link Asset Management"],
   },
 };
@@ -321,16 +344,20 @@ function generateCandidateQueries(query: string): string[] {
   const normalized = query.replace(/['’]s\b/gi, "");
   const clean = normalized.replace(/[^\w\s]/g, " ");
 
-  // Check for Univers client / facility entity acronyms and inject high-yield queries
+  // Check for Univers client / facility entity acronyms and inject high-yield domain queries
   const lowerQuery = normalized.toLowerCase();
   for (const [key, entity] of Object.entries(UNIVERS_CLIENT_ENTITIES)) {
     const pattern = new RegExp(`\\b${key}\\b`, "i");
     if (pattern.test(lowerQuery)) {
       const rest = normalized.replace(pattern, "").replace(/\s+/g, " ").trim();
+      candidates.push(`site:${entity.primaryDomain} sustainability`);
+      candidates.push(`site:${entity.primaryDomain} energy OR electricity OR HVAC`);
+      candidates.push(`site:${entity.primaryDomain} filetype:pdf`);
       candidates.push(`"${entity.fullName}" sustainability report`);
       candidates.push(`"${entity.fullName}" ${rest}`.trim());
-      candidates.push(`"${entity.fullName}" energy electricity HVAC`);
+      candidates.push(`"${entity.fullName}" energy electricity`);
       candidates.push(`"${entity.fullName}" decarbonization emissions`);
+      break;
     }
   }
 
@@ -484,70 +511,165 @@ async function searchHackerNewsSources(
   }
 }
 
+function rankAndFilterSources(
+  urls: string[],
+  query: string,
+  matchedEntity?: { fullName: string; primaryDomain: string }
+): string[] {
+  const isCodeQuery =
+    /\b(code|github|git|repo|repository|npm|library|sdk|package|script|programming)\b/i.test(
+      query
+    );
+
+  const scored = urls
+    .filter((url) => {
+      const lower = url.toLowerCase();
+      // Filter out code repositories unless explicit
+      if ((lower.includes("github.com") || lower.includes("gitlab.com")) && !isCodeQuery) {
+        return false;
+      }
+      // Filter out Montreal metro MR-73 train confusion
+      if (lower.includes("mr-73") || lower.includes("montreal_metro")) {
+        return false;
+      }
+      // Filter out internal/staging testing environments
+      if (lower.includes("-uat.") || lower.includes(".uat.") || lower.includes("staging.")) {
+        return false;
+      }
+      return true;
+    })
+    .map((url) => {
+      let score = 0;
+      const lower = url.toLowerCase();
+
+      // Highest priority: official client domain
+      if (matchedEntity && lower.includes(matchedEntity.primaryDomain.toLowerCase())) {
+        score += 100;
+      }
+
+      // High priority: sustainability / ESG / annual reports & PDFs
+      if (lower.endsWith(".pdf") || lower.includes(".pdf")) {
+        score += 50;
+      }
+      if (
+        lower.includes("sustainability") ||
+        lower.includes("decarbon") ||
+        lower.includes("esg")
+      ) {
+        score += 35;
+      }
+      if (
+        lower.includes("energy") ||
+        lower.includes("electricity") ||
+        lower.includes("environment") ||
+        lower.includes("hvac")
+      ) {
+        score += 25;
+      }
+      if (lower.includes("report") || lower.includes("annual")) {
+        score += 20;
+      }
+
+      // Wikipedia is helpful for general structure, but secondary to primary disclosures
+      if (lower.includes("wikipedia.org")) {
+        score += 10;
+      }
+
+      // Academic repositories (OpenAlex)
+      if (
+        lower.includes("resolver.tudelft") ||
+        lower.includes("doi.org") ||
+        lower.includes("sciview") ||
+        lower.includes("arxiv.org")
+      ) {
+        score += 15;
+      }
+
+      return { url, score };
+    });
+
+  // Sort descending by score
+  scored.sort((a, b) => b.score - a.score);
+
+  return Array.from(new Set(scored.map((s) => s.url)));
+}
+
 export async function searchWebSources(
   query: string,
-  limit = 6
+  limit = 7
 ): Promise<string[]> {
   const urls: string[] = [];
   const candidateQueries = generateCandidateQueries(query);
 
+  // Check if query matched any known Univers client entity
+  const lowerQuery = query.toLowerCase();
+  let matchedEntity: { fullName: string; primaryDomain: string } | undefined;
+  for (const [key, entity] of Object.entries(UNIVERS_CLIENT_ENTITIES)) {
+    if (new RegExp(`\\b${key}\\b`, "i").test(lowerQuery)) {
+      matchedEntity = entity;
+      break;
+    }
+  }
+
   for (const q of candidateQueries) {
-    if (urls.length >= limit) break;
+    if (urls.length >= limit * 2) break;
 
     // 1. Tavily API (if configured with API key)
-    const tavily = await searchTavilyApi(q, limit);
+    const tavily = await searchTavilyApi(q, 4);
     for (const u of tavily) {
       if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
     }
 
     // 2. Serper API (if configured with API key)
-    if (urls.length < limit) {
-      const serper = await searchSerperApi(q, limit);
+    if (urls.length < limit * 2) {
+      const serper = await searchSerperApi(q, 4);
       for (const u of serper) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
 
-    // 3. Wikipedia API (Most reliable, free, comprehensive encyclopedic reference)
-    if (urls.length < limit) {
-      const wiki = await searchWikipediaSources(q, 3);
-      for (const u of wiki) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
-      }
-    }
-
-    // 4. OpenAlex Scholarly API (Free open-access scientific & academic studies)
-    if (urls.length < limit) {
-      const openAlex = await searchOpenAlexSources(q, 3);
-      for (const u of openAlex) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
-      }
-    }
-
-    // 5. DuckDuckGo HTML scraper fallback
-    if (urls.length < limit) {
+    // 3. DuckDuckGo HTML Scraper (live web, client domains, PDF disclosures)
+    if (urls.length < limit * 2) {
       const ddgHtml = await searchDDGHtml(q);
       for (const u of ddgHtml) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
 
-    // 6. DuckDuckGo API fallback
-    if (urls.length < limit) {
+    // 4. DuckDuckGo API fallback
+    if (urls.length < limit * 2) {
       const ddgApi = await searchDDGApi(q);
       for (const u of ddgApi) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
 
-    // 7. Hacker News (Algolia API) fallback for tech discussions & web articles
-    if (urls.length < limit) {
-      const hn = await searchHackerNewsSources(q, 3);
+    // 5. Wikipedia API (limit to 1 encyclopedic article)
+    if (urls.length < limit * 2) {
+      const wiki = await searchWikipediaSources(q, 1);
+      for (const u of wiki) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      }
+    }
+
+    // 6. OpenAlex Scholarly API (limit to 1 academic paper if entity is matched)
+    if (urls.length < limit * 2) {
+      const openAlex = await searchOpenAlexSources(q, matchedEntity ? 1 : 2);
+      for (const u of openAlex) {
+        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      }
+    }
+
+    // 7. Hacker News (Algolia API) fallback for non-code tech discussions
+    if (urls.length < limit * 2) {
+      const hn = await searchHackerNewsSources(q, 2);
       for (const u of hn) {
         if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
   }
 
-  return urls.slice(0, limit);
+  // Re-rank candidate URLs to prioritize client official domains, sustainability PDFs, and energy disclosures
+  const ranked = rankAndFilterSources(urls, query, matchedEntity);
+  return ranked.slice(0, limit);
 }

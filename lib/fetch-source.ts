@@ -2,8 +2,8 @@ import * as cheerio from "cheerio";
 import TurndownService from "turndown";
 import { isApprovedUrl } from "./sources";
 
-const MAX_CHARS_PER_SOURCE = 25_000;
-const FETCH_TIMEOUT_MS = 15_000;
+const MAX_CHARS_PER_SOURCE = 35_000;
+const FETCH_TIMEOUT_MS = 10_000;
 
 export type SourcePacket = {
   id: string;
@@ -29,8 +29,21 @@ async function parsePdfBuffer(buffer: Buffer): Promise<string> {
     }
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PDFParse } = require("pdf-parse");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path");
+
+    const pdfOptions: Record<string, unknown> = { first: 35 };
+    try {
+      const pdfjsDir = path.dirname(require.resolve("pdfjs-dist/package.json"));
+      pdfOptions.cMapUrl = path.join(pdfjsDir, "cmaps") + "/";
+      pdfOptions.cMapPacked = true;
+      pdfOptions.standardFontDataUrl = path.join(pdfjsDir, "standard_fonts") + "/";
+    } catch {
+      // fallback without cmaps
+    }
+
     const uint8 = new Uint8Array(buffer);
-    const p = new PDFParse(uint8);
+    const p = new PDFParse(uint8, pdfOptions);
     await p.load();
     const res = await p.getText();
     return (res.text || String(res)).replace(/\s+/g, " ").trim();
@@ -239,7 +252,32 @@ export async function fetchApprovedSource(
     }
   }
 
-  text = text.slice(0, MAX_CHARS_PER_SOURCE);
+  if (text.length > MAX_CHARS_PER_SOURCE) {
+    const head = text.slice(0, 12_000);
+    const remaining = text.slice(12_000);
+    const keywords = [
+      "energy", "electricity", "hvac", "chiller", "cooling", "air conditioning",
+      "consumption", "kwh", "mwh", "gigajoule", "gj", "scope 1", "scope 2", "scope 3",
+      "emissions", "carbon", "diesel", "solar", "fuel", "target", "baseline"
+    ];
+    const regex = new RegExp(`\\b(${keywords.join("|")})\\b`, "i");
+    const paragraphs = remaining.split(/\n\n+/);
+    const relevantParagraphs: string[] = [];
+    let currentLen = head.length;
+
+    for (const para of paragraphs) {
+      if (regex.test(para)) {
+        relevantParagraphs.push(para);
+        currentLen += para.length + 2;
+        if (currentLen >= MAX_CHARS_PER_SOURCE) break;
+      }
+    }
+
+    text = `${head}\n\n### [... Key Operational Energy & Telemetry Sections ...]\n\n${relevantParagraphs.join("\n\n")}`.slice(
+      0,
+      MAX_CHARS_PER_SOURCE
+    );
+  }
 
   // If text is a bot challenge page or too short (SPA), fall back to Jina Reader
   if (text.length < 100 || isChallengePage(text, title)) {

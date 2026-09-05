@@ -359,6 +359,18 @@ export default function Home() {
               <span>EnOS Entity Graph • Client Reports Active</span>
             </div>
 
+            {/* Developed by Evan Yap Link */}
+            <a
+              href="https://www.linkedin.com/in/evanyapzhikai/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center space-x-1.5 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-1.5 text-xs font-medium text-emerald-300 transition-all hover:bg-emerald-500/20 hover:border-emerald-400/50 hover:text-white shadow-sm cursor-pointer group"
+            >
+              <span className="text-slate-400 group-hover:text-slate-200 hidden xs:inline">Developed by</span>
+              <span className="font-semibold text-emerald-400 group-hover:text-emerald-300">Evan Yap</span>
+              <ExternalLink className="h-3 w-3 text-emerald-400/80 group-hover:text-emerald-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </a>
+
             {/* API Key Modal Button */}
             <button
               type="button"
@@ -381,9 +393,21 @@ export default function Home() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
         {/* Univers Hero Section */}
         <section className="mb-7 text-center sm:mb-9">
-          <div className="inline-flex items-center space-x-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1 text-xs text-emerald-300 backdrop-blur-md mb-3.5 shadow-inner">
-            <Gauge className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Built for Univers Energy Engineers & Decarbonization Consultants</span>
+          <div className="inline-flex flex-wrap items-center justify-center gap-2.5 mb-3.5">
+            <div className="inline-flex items-center space-x-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1 text-xs text-emerald-300 backdrop-blur-md shadow-inner">
+              <Gauge className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Built for Univers Energy Engineers & Decarbonization Consultants</span>
+            </div>
+            <a
+              href="https://www.linkedin.com/in/evanyapzhikai/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300 hover:border-emerald-400/50 hover:bg-emerald-500/10 hover:text-emerald-300 transition-all backdrop-blur-md cursor-pointer group"
+            >
+              <span>Developed by</span>
+              <span className="font-semibold text-white group-hover:text-emerald-300 underline decoration-emerald-500/40 underline-offset-2">Evan Yap</span>
+              <ExternalLink className="h-3 w-3 text-emerald-400" />
+            </a>
           </div>
 
           <h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl">
@@ -1063,16 +1087,19 @@ export default function Home() {
 
       {/* Univers Footer */}
       <footer className="mt-16 border-t border-white/[0.07] py-6 text-center text-xs text-slate-500">
-        <div className="mx-auto max-w-5xl px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="mx-auto max-w-5xl px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>© 2026 Univers Intelligence Hub. Dedicated to client decarbonization & energy efficiency.</p>
-          <div className="flex items-center space-x-3 text-slate-400">
-            <span>EnOS Decarb Graph</span>
-            <span>•</span>
-            <span>Modern Terminals & HACTL Disclosures</span>
-            <span>•</span>
-            <span>OpenAlex Academic Works</span>
-            <span>•</span>
-            <span>Google Gemini</span>
+          <div className="flex items-center space-x-2 text-slate-400">
+            <span>Developed by</span>
+            <a
+              href="https://www.linkedin.com/in/evanyapzhikai/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-300 transition-all hover:border-emerald-400 hover:bg-emerald-500/20 hover:text-white cursor-pointer"
+            >
+              <span>Evan Yap</span>
+              <ExternalLink className="h-3 w-3 text-emerald-400" />
+            </a>
           </div>
         </div>
       </footer>

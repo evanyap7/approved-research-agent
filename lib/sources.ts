@@ -200,14 +200,96 @@ async function searchDDGApi(query: string): Promise<string[]> {
   }
 }
 
+export const UNIVERS_CLIENT_ENTITIES: Record<
+  string,
+  { fullName: string; contextTerms: string[] }
+> = {
+  mtl: {
+    fullName: "Modern Terminals Limited",
+    contextTerms: [
+      "Modern Terminals Limited",
+      "Modern Terminals Group",
+      "modernterminals.com",
+    ],
+  },
+  hactl: {
+    fullName: "Hong Kong Air Cargo Terminals",
+    contextTerms: [
+      "Hong Kong Air Cargo Terminals Limited",
+      "HACTL SuperTerminal 1",
+      "hactl.com",
+    ],
+  },
+  hit: {
+    fullName: "Hongkong International Terminals",
+    contextTerms: ["Hongkong International Terminals", "HIT Hutchison Ports"],
+  },
+  aahk: {
+    fullName: "Airport Authority Hong Kong",
+    contextTerms: ["Airport Authority Hong Kong", "HKIA", "Hong Kong Airport"],
+  },
+  hkia: {
+    fullName: "Hong Kong International Airport",
+    contextTerms: ["Hong Kong International Airport", "Airport Authority"],
+  },
+  clp: {
+    fullName: "CLP Power Hong Kong",
+    contextTerms: ["CLP Power Hong Kong", "CLP Group energy"],
+  },
+  hec: {
+    fullName: "Hongkong Electric Company",
+    contextTerms: ["Hongkong Electric", "HK Electric"],
+  },
+  mtr: {
+    fullName: "MTR Corporation",
+    contextTerms: ["MTR Corporation", "MTR Hong Kong"],
+  },
+  swire: {
+    fullName: "Swire Properties",
+    contextTerms: ["Swire Properties", "Swire Pacific sustainability"],
+  },
+  shkp: {
+    fullName: "Sun Hung Kai Properties",
+    contextTerms: ["Sun Hung Kai Properties", "SHKP"],
+  },
+  hld: {
+    fullName: "Henderson Land Development",
+    contextTerms: ["Henderson Land Development", "Henderson Land"],
+  },
+  psa: {
+    fullName: "PSA International",
+    contextTerms: ["PSA International port terminals", "PSA Corporation"],
+  },
+  "link reit": {
+    fullName: "Link Real Estate Investment Trust",
+    contextTerms: ["Link REIT", "Link Asset Management"],
+  },
+};
+
 async function searchWikipediaSources(
   query: string,
   limit = 3
 ): Promise<string[]> {
   if (!query) return [];
+
+  // If query is an acronym matching a Univers entity, search using the expanded full name
+  let targetQuery = query;
+  const lower = query.toLowerCase().trim();
+  if (UNIVERS_CLIENT_ENTITIES[lower]) {
+    targetQuery = UNIVERS_CLIENT_ENTITIES[lower].fullName;
+  } else {
+    for (const [key, ent] of Object.entries(UNIVERS_CLIENT_ENTITIES)) {
+      const pattern = new RegExp(`\\b${key}\\b`, "i");
+      if (pattern.test(lower)) {
+        targetQuery = query.replace(pattern, ent.fullName);
+        break;
+      }
+    }
+  }
+
   try {
     const apiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
-      query
+      targetQuery
     )}&format=json&srlimit=${limit}`;
 
     const res = await fetch(apiUrl, {
@@ -235,11 +317,24 @@ async function searchWikipediaSources(
 
 function generateCandidateQueries(query: string): string[] {
   const candidates: string[] = [];
-  // Normalize possessives like HACTL's or HACTL’s to HACTL
+  // Normalize possessives like MTL's or HACTL's to MTL / HACTL
   const normalized = query.replace(/['’]s\b/gi, "");
   const clean = normalized.replace(/[^\w\s]/g, " ");
 
-  // 1. Clean keywords without conversational fillers
+  // Check for Univers client / facility entity acronyms and inject high-yield queries
+  const lowerQuery = normalized.toLowerCase();
+  for (const [key, entity] of Object.entries(UNIVERS_CLIENT_ENTITIES)) {
+    const pattern = new RegExp(`\\b${key}\\b`, "i");
+    if (pattern.test(lowerQuery)) {
+      const rest = normalized.replace(pattern, "").replace(/\s+/g, " ").trim();
+      candidates.push(`"${entity.fullName}" sustainability report`);
+      candidates.push(`"${entity.fullName}" ${rest}`.trim());
+      candidates.push(`"${entity.fullName}" energy electricity HVAC`);
+      candidates.push(`"${entity.fullName}" decarbonization emissions`);
+    }
+  }
+
+  // Clean keywords without conversational fillers
   const stopwords = new Set([
     "research", "find", "come", "up", "with", "a", "number", "for", "their",
     "and", "the", "of", "in", "to", "about", "give", "me", "tell", "what", "is", "how", "does",
@@ -253,7 +348,7 @@ function generateCandidateQueries(query: string): string[] {
     const fullClean = words.join(" ");
     candidates.push(fullClean);
 
-    // If query has 3 or more keywords, also try the primary 2-word prefix (e.g. "HACTL HVAC")
+    // If query has 3 or more keywords, also try the primary 2-word prefix (e.g. "MTL HVAC")
     if (words.length >= 3) {
       candidates.push(words.slice(0, 2).join(" "));
     }
@@ -270,7 +365,7 @@ function generateCandidateQueries(query: string): string[] {
     }
   }
 
-  // 2. Direct original query
+  // Direct original query
   if (!candidates.includes(query)) {
     candidates.push(query);
   }
@@ -362,11 +457,24 @@ async function searchHackerNewsSources(
     const hits = parsed.hits || [];
     const urls: string[] = [];
 
+    const isCodeQuery =
+      /\b(code|github|git|repo|repository|npm|library|sdk|package|script|programming)\b/i.test(
+        query
+      );
+
     for (const hit of hits) {
-      if (hit.url && typeof hit.url === "string") {
-        urls.push(hit.url);
-      } else if (hit.objectID) {
-        urls.push(`https://news.ycombinator.com/item?id=${hit.objectID}`);
+      const targetUrl =
+        hit.url ||
+        (hit.objectID ? `https://news.ycombinator.com/item?id=${hit.objectID}` : null);
+
+      if (
+        targetUrl &&
+        typeof targetUrl === "string" &&
+        (!targetUrl.includes("github.com") || isCodeQuery) &&
+        (!targetUrl.includes("gitlab.com") || isCodeQuery) &&
+        !urls.includes(targetUrl)
+      ) {
+        urls.push(targetUrl);
       }
     }
 

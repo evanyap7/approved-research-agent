@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VERITAS | Autonomous Research & Claim Verification Agent",
+  title: "UNIVERS | Decarbonization & Facility Research Intelligence Agent",
   description:
-    "Grounded AI research synthesis and fact-checking powered by peer-reviewed literature, live web sources, and real-time open APIs.",
+    "Enterprise AI research synthesis, client due diligence, and facility energy audits for Univers decarbonization engineers and ESG consultants.",
 };
 
 export default function RootLayout({

@@ -2,7 +2,7 @@
 
 A source-grounded AI research application that answers questions using only a controlled collection of approved webpages. It produces concise research notes with source-level citations, structured findings, and transparent limitations when the available evidence is incomplete.
 
-Built as an independent full-stack project with Next.js, TypeScript, the Vercel AI SDK, Google Gemini, Zod, Cheerio, and Vercel.
+Built as an independent full-stack project with Next.js, TypeScript, the Vercel AI SDK, Groq LPU (Open-Source Models), Google Gemini, Zod, Cheerio, and Vercel.
 
 ## Why This Project Exists
 
@@ -23,7 +23,7 @@ The result is a research workflow designed around:
 - Accepts natural-language research questions
 - Retrieves content only from approved webpages
 - Extracts and normalizes webpage text with Cheerio
-- Uses Gemini through the Vercel AI SDK for research synthesis
+- Uses Groq LPUs (`openai/gpt-oss-120b`) for ultra-fast, free open-source synthesis (with Gemini fallback)
 - Generates structured research notes instead of unbounded chat responses
 - Includes source-level citations and clickable links
 - Identifies evidence gaps and limitations explicitly
@@ -37,7 +37,7 @@ The result is a research workflow designed around:
 | --- | --- |
 | Frontend | Next.js, React, TypeScript, Tailwind CSS |
 | Backend | Next.js Route Handlers, Node.js |
-| AI | Vercel AI SDK, Google Gemini API |
+| AI Inference | Groq LPU (`@ai-sdk/groq`), Google Gemini (`@ai-sdk/google`) |
 | Validation | Zod |
 | Web Extraction | Cheerio |
 | Deployment | Vercel |
@@ -114,7 +114,7 @@ This structure makes it easier for users to distinguish between supported conclu
 
 - Node.js 18 or later
 - npm
-- A Google Gemini API key
+- A Groq API key (free at https://console.groq.com) or Google Gemini API key
 
 ### Installation
 
@@ -140,6 +140,10 @@ cp .env.example .env.local
 Add your environment variables:
 
 ```env
+# Free Open-Source Inference via Groq LPUs (Recommended)
+GROQ_API_KEY=gsk_your_groq_api_key
+
+# Optional fallback to Gemini
 GOOGLE_GENERATIVE_AI_API_KEY=your_gemini_api_key
 ```
 
@@ -159,7 +163,8 @@ http://localhost:3000
 
 | Variable | Purpose |
 | --- | --- |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Authenticates requests to the Google Gemini API |
+| `GROQ_API_KEY` | (Recommended) Authenticates requests to Groq Cloud for free open-source models (`openai/gpt-oss-120b`) |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Authenticates fallback requests to the Google Gemini API (`gemini-3.6-flash`) |
 
 Never commit `.env.local` or API keys to source control.
 

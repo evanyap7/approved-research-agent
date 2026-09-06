@@ -189,7 +189,9 @@ export default function Home() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    const savedKey = localStorage.getItem("gemini_api_key");
+    const savedKey =
+      localStorage.getItem("groq_api_key") ||
+      localStorage.getItem("gemini_api_key");
     if (savedKey) setApiKey(savedKey);
   }, []);
 
@@ -208,8 +210,10 @@ export default function Home() {
   function handleApiKeyChange(val: string) {
     setApiKey(val);
     if (val.trim()) {
+      localStorage.setItem("groq_api_key", val.trim());
       localStorage.setItem("gemini_api_key", val.trim());
     } else {
+      localStorage.removeItem("groq_api_key");
       localStorage.removeItem("gemini_api_key");
     }
   }
@@ -641,7 +645,7 @@ export default function Home() {
                   onClick={() => setShowSettingsModal(true)}
                   className="mt-2 text-xs font-semibold text-white underline hover:no-underline"
                 >
-                  Configure Gemini API Key →
+                  Configure AI Engine API Key →
                 </button>
               )}
             </div>
@@ -1198,18 +1202,18 @@ export default function Home() {
                   htmlFor="api-key-input"
                   className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
                 >
-                  Gemini API Key (Optional)
+                  Groq / Open-Source or Gemini API Key (Optional)
                 </label>
                 <input
                   id="api-key-input"
                   type="password"
                   value={apiKey}
                   onChange={(e) => handleApiKeyChange(e.target.value)}
-                  placeholder="AIzaSy..."
+                  placeholder="gsk_... (Groq Free) or AIzaSy... (Gemini)"
                   className="w-full rounded-xl border border-white/10 bg-black/50 p-2.5 font-mono text-xs text-white placeholder-slate-600 outline-none focus:border-emerald-500/60"
                 />
                 <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
-                  Saved securely in your browser&apos;s local storage. Used for synthesizing client facility audits and claims.
+                  Saved securely in local storage. Powered by ultra-fast Groq LPU open-source inference (100% free credits) with Gemini fallback.
                 </p>
               </div>
 

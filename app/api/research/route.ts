@@ -1,4 +1,5 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGroq } from "@ai-sdk/groq";
 import { generateObject } from "ai";
 import { z } from "zod";
 
@@ -20,16 +21,28 @@ export async function POST(request: Request) {
   try {
     const body = requestSchema.parse(await request.json());
 
-    const apiKey = body.apiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    // Resolve API key from body, Groq environment variables, or Gemini environment variables
+    const groqKey =
+      (body.apiKey && body.apiKey.startsWith("gsk_") ? body.apiKey : null) ||
+      process.env.GROQ_API_KEY ||
+      process.env["research-agent-api"];
 
-    if (!apiKey) {
+    const googleKey =
+      (body.apiKey && !body.apiKey.startsWith("gsk_") ? body.apiKey : null) ||
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
+    let model;
+    if (groqKey) {
+      const groq = createGroq({ apiKey: groqKey });
+      model = groq("openai/gpt-oss-120b");
+    } else if (googleKey) {
+      const googleProvider = createGoogleGenerativeAI({ apiKey: googleKey });
+      model = googleProvider("gemini-3.6-flash");
+    } else {
       throw new Error(
-        "Google Generative AI API key is missing. Please enter your Gemini API Key in the optional API Key input below, or configure GOOGLE_GENERATIVE_AI_API_KEY in your environment."
+        "No AI API key found. Please configure GROQ_API_KEY (gsk_...) in your .env.local file or enter it in the settings modal."
       );
     }
-
-    const googleProvider = createGoogleGenerativeAI({ apiKey });
-    const model = googleProvider("gemini-3.6-flash");
 
     let targetUrls: string[] = [];
 

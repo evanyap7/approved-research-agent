@@ -17,8 +17,8 @@ Built as an independent full-stack project with Next.js, TypeScript, the Vercel 
 ## How sources are chosen
 
 1. **Your URLs, if you give any.** When custom URLs are supplied, only those are fetched, after validation.
-2. **Otherwise, search.** The app builds search queries from the question and runs them through Tavily or Serper when a key is set, falling back to DuckDuckGo, and can also draw on OpenAlex for academic work. If the question names one of 13 mapped client entities (for example MTL, HACTL or AAHK), it adds targeted `site:` queries for that entity's official domain and seeds known report URLs.
-3. **Rank and fetch.** Candidates are scored: the matched client's official domain first, then PDFs, then sustainability, ESG and energy pages, and reports. Code repositories and staging sites are filtered out. Up to 5 are fetched in parallel. HTML is converted to markdown, PDFs are parsed (first 20 pages), JavaScript-heavy pages fall back to Jina Reader, and each source is trimmed to 30,000 characters.
+2. **Otherwise, search.** The app builds search queries from the question and runs them through Tavily or Serper when a key is set, falling back to DuckDuckGo, and can also draw on OpenAlex for academic work. If the question names an organisation in a built-in map of known entities, it adds targeted `site:` queries for that organisation's official domain and seeds known report URLs.
+3. **Rank and fetch.** Candidates are scored: the matched organisation's official domain first, then PDFs, then sustainability, ESG and energy pages, and reports. Code repositories and staging sites are filtered out. Up to 5 are fetched in parallel. HTML is converted to markdown, PDFs are parsed (first 20 pages), JavaScript-heavy pages fall back to Jina Reader, and each source is trimmed to 30,000 characters.
 4. **Keep the first 4 readable sources**, labelled `S1` to `S4`.
 
 Because search results decide what is retrieved, source quality varies. The interface lists every retrieved source so the reader can judge it.
@@ -59,7 +59,7 @@ Question (+ optional URLs, mode)
         v
 Route handler: validate with Zod
         |
-        +--> Resolve known client names to official domains
+        +--> Resolve known organisation names to official domains
         +--> Search (Tavily / Serper / DuckDuckGo / OpenAlex) or use supplied URLs
         +--> Rank candidates, fetch up to 5, keep the first 4 readable
         +--> Extract text (HTML, PDF, Jina Reader fallback)

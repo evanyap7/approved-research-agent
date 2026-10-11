@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import ipaddr from "ipaddr.js";
 
-export function isApprovedUrl(value: string): boolean {
+export function isPublicUrl(value: string): boolean {
   try {
     const url = new URL(value);
 
@@ -689,7 +689,7 @@ export async function searchWebSources(
   // If matched client entity has verified direct URLs, seed them into the candidate pool
   if (matchedEntity && matchedEntity.directUrls) {
     for (const directUrl of matchedEntity.directUrls) {
-      if (isApprovedUrl(directUrl) && !urls.includes(directUrl)) {
+      if (isPublicUrl(directUrl) && !urls.includes(directUrl)) {
         urls.push(directUrl);
       }
     }
@@ -701,14 +701,14 @@ export async function searchWebSources(
     // 1. Tavily API (if configured with API key)
     const tavily = await searchTavilyApi(q, 4);
     for (const u of tavily) {
-      if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+      if (isPublicUrl(u) && !urls.includes(u)) urls.push(u);
     }
 
     // 2. Serper API (if configured with API key)
     if (urls.length < limit) {
       const serper = await searchSerperApi(q, 4);
       for (const u of serper) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+        if (isPublicUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
 
@@ -716,7 +716,7 @@ export async function searchWebSources(
     if (urls.length < limit) {
       const ddgHtml = await searchDDGHtml(q);
       for (const u of ddgHtml) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+        if (isPublicUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
 
@@ -724,7 +724,7 @@ export async function searchWebSources(
     if (urls.length < limit) {
       const ddgApi = await searchDDGApi(q);
       for (const u of ddgApi) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+        if (isPublicUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
 
@@ -732,7 +732,7 @@ export async function searchWebSources(
     if (urls.length < limit) {
       const wiki = await searchWikipediaSources(q, 1);
       for (const u of wiki) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+        if (isPublicUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
 
@@ -740,7 +740,7 @@ export async function searchWebSources(
     if (urls.length < limit) {
       const openAlex = await searchOpenAlexSources(q, matchedEntity ? 1 : 2);
       for (const u of openAlex) {
-        if (isApprovedUrl(u) && !urls.includes(u)) urls.push(u);
+        if (isPublicUrl(u) && !urls.includes(u)) urls.push(u);
       }
     }
   }

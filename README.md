@@ -1,203 +1,118 @@
 # AI Research Agent
 
-A source-grounded AI research application that answers questions using only a controlled collection of approved webpages. It produces concise research notes with source-level citations, structured findings, and transparent limitations when the available evidence is incomplete.
+A source-grounded research tool for energy engineers and decarbonisation consultants. For each question it retrieves public webpages and PDFs, extracts their text, and answers using only that retrieved material, with source-level citations, structured findings and an explicit list of limitations.
 
-Built as an independent full-stack project with Next.js, TypeScript, the Vercel AI SDK, Groq LPU (Open-Source Models), Google Gemini, Zod, Cheerio, and Vercel.
+Live: <https://approved-research-agent.vercel.app>
 
-## Why This Project Exists
+Built as an independent full-stack project with Next.js, TypeScript, the Vercel AI SDK, Groq (open-source models) with a Gemini fallback, Zod and Cheerio, and deployed on Vercel.
 
-General-purpose AI answers can be difficult to verify because sources may be missing, unreliable, or outside an intended research scope.
+> The repository name is historical. The app does **not** restrict itself to a fixed list of approved sites; see [How sources are chosen](#how-sources-are-chosen).
 
-This project addresses that problem by constraining the research pipeline to a predefined allowlist of approved sources. The assistant does not treat the open web as its evidence base. Instead, it retrieves, extracts, normalizes, and synthesizes information only from authorized webpages.
+## What it does
 
-The result is a research workflow designed around:
+- **Facility due diligence.** Ask a question about a client facility and get a cited research brief: summary, findings with confidence, and limitations.
+- **ESG claim verification.** Paste a claim and get a verdict (`VERIFIED`, `REFUTED` or `UNVERIFIED`), a 0-100 truth rating, supporting and contradicting evidence, and limitations.
+- **Preset practice areas** for ports and terminals, HVAC and chiller plants, commercial real estate, SBTi decarbonisation targets, and renewables and microgrids.
 
-- Source control
-- Traceability
-- Structured output
-- Evidence limitations
-- Clear citations
+## How sources are chosen
 
-## Features
+1. **Your URLs, if you give any.** When custom URLs are supplied, only those are fetched, after validation.
+2. **Otherwise, search.** The app builds search queries from the question and runs them through Tavily or Serper when a key is set, falling back to DuckDuckGo, and can also draw on OpenAlex for academic work. If the question names one of 13 mapped client entities (for example MTL, HACTL or AAHK), it adds targeted `site:` queries for that entity's official domain and seeds known report URLs.
+3. **Rank and fetch.** Candidates are scored: the matched client's official domain first, then PDFs, then sustainability, ESG and energy pages, and reports. Code repositories and staging sites are filtered out. Up to 5 are fetched in parallel. HTML is converted to markdown, PDFs are parsed (first 20 pages), JavaScript-heavy pages fall back to Jina Reader, and each source is trimmed to 30,000 characters.
+4. **Keep the first 4 readable sources**, labelled `S1` to `S4`.
 
-- Accepts natural-language research questions
-- Retrieves content only from approved webpages
-- Extracts and normalizes webpage text with Cheerio
-- Uses Groq LPUs (`openai/gpt-oss-120b`) for ultra-fast, free open-source synthesis (with Gemini fallback)
-- Generates structured research notes instead of unbounded chat responses
-- Includes source-level citations and clickable links
-- Identifies evidence gaps and limitations explicitly
-- Displays asynchronous loading, success, and error states
-- Provides a responsive interface built with Next.js, React, TypeScript, and Tailwind CSS
-- Runs as a serverless deployment on Vercel
+Because search results decide what is retrieved, source quality varies. The interface lists every retrieved source so the reader can judge it.
 
-## Tech Stack
+## Safeguards
+
+- **Evidence only.** The model is told to use only the supplied source packets. In code, any finding that cites an ID that was not supplied is dropped before it reaches the interface.
+- **Untrusted text.** Retrieved pages are treated as untrusted reference material, and the model is instructed to ignore instructions found inside them.
+- **Request validation.** Requests are validated with Zod. Private, loopback, link-local and cloud-metadata addresses are blocked (SSRF protection).
+- **Limitations are part of the schema.** Every response must state what the evidence does not cover.
+- **Bounded retrieval.** Each fetch has a 6-second timeout and a size cap.
+
+## Known limitations
+
+- There is no allowlist mode, so nothing guarantees a source is official or reliable.
+- The truth rating is the model's judgement of the retrieved text. It is not a calibrated probability.
+- Citation accuracy is not yet measured by an automated evaluation.
+- Search depends on third-party services, so results can vary between runs.
+
+## Tech stack
 
 | Area | Technologies |
 | --- | --- |
-| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Frontend | Next.js 16, React, TypeScript, Tailwind CSS, react-markdown |
 | Backend | Next.js Route Handlers, Node.js |
-| AI Inference | Groq LPU (`@ai-sdk/groq`), Google Gemini (`@ai-sdk/google`) |
+| AI inference | Groq (`@ai-sdk/groq`, `openai/gpt-oss-120b`), Google Gemini fallback (`@ai-sdk/google`) |
 | Validation | Zod |
-| Web Extraction | Cheerio |
+| Extraction | Cheerio, Turndown, pdf-parse, Jina Reader fallback |
+| Retrieval | Tavily, Serper, DuckDuckGo, OpenAlex |
+| Safety | ipaddr.js for address checks |
 | Deployment | Vercel |
 
 ## Architecture
 
 ```text
-User Research Question
+Question (+ optional URLs, mode)
         |
         v
-Next.js / React Interface
+Route handler: validate with Zod
+        |
+        +--> Resolve known client names to official domains
+        +--> Search (Tavily / Serper / DuckDuckGo / OpenAlex) or use supplied URLs
+        +--> Rank candidates, fetch up to 5, keep the first 4 readable
+        +--> Extract text (HTML, PDF, Jina Reader fallback)
         |
         v
-Next.js Route Handler
-        |
-        +--> Validate request with Zod
-        |
-        +--> Retrieve approved source pages only
-        |
-        +--> Extract normalized text with Cheerio
-        |
-        +--> Send approved evidence to Gemini via Vercel AI SDK
-        |
-        +--> Validate structured research response
+Model call (Groq, Gemini fallback) with the sources as untrusted context
         |
         v
-Research Notes UI
-  - Summary
-  - Findings
-  - Confidence
-  - Limitations
-  - Source citations
+Validate structured output, drop findings that cite unknown sources
+        |
+        v
+UI: brief or verdict, findings, confidence, limitations, sources
 ```
 
-## Research Workflow
-
-1. A user submits a research question.
-2. The application identifies the relevant approved webpages.
-3. Server-side code retrieves and extracts readable webpage content.
-4. Cheerio normalizes webpage HTML into usable text.
-5. The approved source content is provided to Gemini as the evidence context.
-6. Gemini generates a structured response based only on the supplied evidence.
-7. The interface renders findings, limitations, and source-level citations.
-
-## Evidence Policy
-
-The project follows a controlled-source approach:
-
-- Answers are grounded in the approved source collection.
-- The model is instructed not to treat unsupported claims as facts.
-- Sources are shown alongside generated findings.
-- The application should disclose when approved sources do not contain enough evidence to answer a question fully.
-- The app prioritizes evidence traceability over broad, unsupported answers.
-
-## Structured Output
-
-Research responses are designed to include:
-
-```text
-Research question
-Summary
-Key findings
-Confidence or evidence strength
-Limitations
-Approved sources used
-Source-level citations
-```
-
-This structure makes it easier for users to distinguish between supported conclusions and areas where more evidence is needed.
-
-## Local Setup
+## Local setup
 
 ### Prerequisites
 
-- Node.js 18 or later
+- Node.js 20.9 or later (required by Next.js 16)
 - npm
-- A Groq API key (free at https://console.groq.com) or Google Gemini API key
+- A free Groq API key (<https://console.groq.com>) or a Google Gemini API key
 
-### Installation
-
-Clone the repository:
+### Install and run
 
 ```bash
 git clone https://github.com/evanyap7/approved-research-agent.git
 cd approved-research-agent
-```
-
-Install dependencies:
-
-```bash
 npm install
-```
-
-Create a local environment file:
-
-```bash
-cp .env.example .env.local
-```
-
-Add your environment variables:
-
-```env
-# Free Open-Source Inference via Groq LPUs (Recommended)
-GROQ_API_KEY=gsk_your_groq_api_key
-
-# Optional fallback to Gemini
-GOOGLE_GENERATIVE_AI_API_KEY=your_gemini_api_key
-```
-
-Start the development server:
-
-```bash
+cp .env.example .env.local   # then add your keys
 npm run dev
 ```
 
-Open:
+Open <http://localhost:3000>.
 
-```text
-http://localhost:3000
-```
-
-## Environment Variables
+### Environment variables
 
 | Variable | Purpose |
 | --- | --- |
-| `GROQ_API_KEY` | (Recommended) Authenticates requests to Groq Cloud for free open-source models (`openai/gpt-oss-120b`) |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Authenticates fallback requests to the Google Gemini API (`gemini-3.6-flash`) |
+| `GROQ_API_KEY` | Recommended. Runs `openai/gpt-oss-120b` on Groq. |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Fallback. Runs `gemini-3.6-flash` when no Groq key is set. |
+| `TAVILY_API_KEY` | Optional search provider. |
+| `SERPER_API_KEY` | Optional search provider. |
 
-Never commit `.env.local` or API keys to source control.
+Never commit `.env.local` or API keys.
 
 ## Deployment
 
-This project is designed for deployment on Vercel.
+The app deploys to Vercel. Pushing to the production branch triggers a build. Check a build locally with `npm run build`.
 
-```bash
-npm run build
-```
+## Future improvements
 
-Then push changes to the production branch connected to Vercel:
-
-```bash
-git add .
-git commit -m "Deploy AI research agent"
-git push
-```
-
-Vercel will build and deploy the application automatically.
-
-## Future Improvements
-
-- Add a source-management dashboard for maintaining approved webpages
-- Cache extracted webpage content to reduce repeated retrieval work
-- Add source freshness timestamps
-- Add exportable research notes in Markdown or PDF
-- Add user authentication and saved research history
-- Support multiple research collections for different domains
-- Add automated evaluation for citation completeness and claim grounding
-
-## Resume Highlights
-
-- Built a source-grounded AI research system that limits generation to an approved collection of webpages, improving answer traceability and evidence control.
-- Engineered a server-side research pipeline with Next.js Route Handlers, Cheerio, Zod, Gemini, and the Vercel AI SDK.
-- Designed a responsive research interface with structured findings, evidence limitations, confidence indicators, and source-level citations.
+- An optional allowlist mode that restricts retrieval to configured domains.
+- An automated evaluation of citation completeness and claim grounding.
+- Caching extracted pages and showing source freshness timestamps.
+- Exportable research notes in Markdown or PDF.
+- Saved research history with authentication.
